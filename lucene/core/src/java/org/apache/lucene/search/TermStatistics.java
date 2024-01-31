@@ -22,13 +22,14 @@ import org.apache.lucene.index.TermsEnum; // javadocs
 import org.apache.lucene.util.BytesRef;
 
 /**
+ * 保存词统计信息的对象
  * Contains statistics for a specific term
  *
  * <p>This class holds statistics for this term across all documents for scoring purposes:
  *
  * <ul>
- *   <li>{@link #docFreq}: number of documents this term occurs in.
- *   <li>{@link #totalTermFreq}: number of tokens for this term.
+ *   <li>{@link #docFreq}: number of documents this term occurs in. 出现的文档数，df
+ *   <li>{@link #totalTermFreq}: number of tokens for this term. 词频tf
  * </ul>
  *
  * <p>The following conditions are always true:

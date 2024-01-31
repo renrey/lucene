@@ -126,6 +126,7 @@ final class FreqProxTermsWriter extends TermsHash {
           };
     }
 
+    // 写入倒排索引
     try (FieldsConsumer consumer =
         state.segmentInfo.getCodec().postingsFormat().fieldsConsumer(state)) {
       consumer.write(fields, norms);

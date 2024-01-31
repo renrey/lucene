@@ -22,14 +22,14 @@ import org.apache.lucene.index.Terms; // javadocs
 
 /**
  * Contains statistics for a collection (field).
- *
+ * 包含某个词索引的信息（用于计算得分），例如包含的文档数、
  * <p>This class holds statistics across all documents for scoring purposes:
  *
  * <ul>
- *   <li>{@link #maxDoc()}: number of documents.
- *   <li>{@link #docCount()}: number of documents that contain this field.
- *   <li>{@link #sumDocFreq()}: number of postings-list entries.
- *   <li>{@link #sumTotalTermFreq()}: number of tokens.
+ *   <li>{@link #maxDoc()}: number of documents. 所有文档数
+ *   <li>{@link #docCount()}: number of documents that contain this field. 包含这个词的文档数
+ *   <li>{@link #sumDocFreq()}: number of postings-list entries. 倒排索引的entry数-- df
+ *   <li>{@link #sumTotalTermFreq()}: number of tokens. 字段中词的数量
  * </ul>
  *
  * <p>The following conditions are always true:

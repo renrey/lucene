@@ -54,6 +54,7 @@ class StoredFieldsConsumer {
   void startDocument(int docID) throws IOException {
     assert lastDoc < docID;
     initStoredFieldsWriter();
+    // lastDoc一直小于目标docID，writer调整到当前id为止
     while (++lastDoc < docID) {
       writer.startDocument();
       writer.finishDocument();

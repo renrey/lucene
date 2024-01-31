@@ -179,6 +179,9 @@ final class DocumentsWriterPerThread implements Accountable {
               + deleteQueue);
     }
     this.enableTestPoints = enableTestPoints;
+    /**
+     * 进行索引的事件链
+     */
     indexingChain =
         new IndexingChain(
             indexVersionCreated,
@@ -388,6 +391,7 @@ final class DocumentsWriterPerThread implements Accountable {
       } else {
         softDeletedDocs = null;
       }
+     // 执行flush
       sortMap = indexingChain.flush(flushState);
       if (softDeletedDocs == null) {
         flushState.softDelCountOnFlush = 0;

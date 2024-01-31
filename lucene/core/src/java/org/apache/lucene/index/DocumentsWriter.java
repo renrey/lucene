@@ -428,6 +428,9 @@ final class DocumentsWriter implements Closeable, Accountable {
       // waits for all DWPT to be released:
       ensureOpen();
       try {
+        /**
+         * 执行
+         */
         seqNo =
             dwpt.updateDocuments(docs, delNode, flushNotifications, numDocsInRAM::incrementAndGet);
       } finally {
@@ -490,6 +493,9 @@ final class DocumentsWriter implements Closeable, Accountable {
           boolean dwptSuccess = false;
           try {
             // flush concurrently without locking
+            /**
+             * 真正flush
+             */
             final FlushedSegment newSegment = flushingDWPT.flush(flushNotifications);
             ticketQueue.addSegment(ticket, newSegment);
             dwptSuccess = true;

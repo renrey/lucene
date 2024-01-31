@@ -42,12 +42,15 @@ public class ClassicSimilarity extends TFIDFSimilarity {
   /** Implemented as <code>sqrt(freq)</code>. */
   @Override
   public float tf(float freq) {
+    // 对实际tf开平方根
     return (float) Math.sqrt(freq);
   }
 
   @Override
   public Explanation idfExplain(CollectionStatistics collectionStats, TermStatistics termStats) {
+    // 获取出现这个term的df
     final long df = termStats.docFreq();
+    // 所有doc数量
     final long docCount = collectionStats.docCount();
     final float idf = idf(df, docCount);
     return Explanation.match(

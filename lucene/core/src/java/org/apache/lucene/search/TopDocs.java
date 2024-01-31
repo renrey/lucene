@@ -298,21 +298,28 @@ public class TopDocs {
       if (shard.totalHits.relation == TotalHits.Relation.GREATER_THAN_OR_EQUAL_TO) {
         totalHitsRelation = TotalHits.Relation.GREATER_THAN_OR_EQUAL_TO;
       }
+      // 把doc都放入到queue，（会排序的）
       if (shard.scoreDocs != null && shard.scoreDocs.length > 0) {
         availHitCount += shard.scoreDocs.length;
         queue.add(new ShardRef(shardIDX));
       }
     }
 
+    // 具体doc集合
     final ScoreDoc[] hits;
     boolean unsetShardIndex = false;
+    // 命中总数《= 开始下标，即无结果返回
     if (availHitCount <= start) {
       hits = new ScoreDoc[0];
     } else {
+      // 减少申请的数组空间
       hits = new ScoreDoc[Math.min(size, availHitCount - start)];
+      // 理论上最后一个数据的下标
       int requestedResultWindow = start + size;
+      //
       int numIterOnHits = Math.min(availHitCount, requestedResultWindow);
       int hitUpto = 0;
+      // 开始遍历queue
       while (hitUpto < numIterOnHits) {
         assert queue.size() > 0;
         ShardRef ref = queue.top();

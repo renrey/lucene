@@ -261,6 +261,7 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
     this.fieldInfos = state.fieldInfos;
     this.postingsWriter = postingsWriter;
 
+    // tim
     final String termsName =
         IndexFileNames.segmentFileName(
             state.segmentInfo.name,
@@ -277,6 +278,7 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
           state.segmentInfo.getId(),
           state.segmentSuffix);
 
+      // tip索引文件
       final String indexName =
           IndexFileNames.segmentFileName(
               state.segmentInfo.name,
@@ -304,6 +306,7 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
           state.segmentInfo.getId(),
           state.segmentSuffix);
 
+        // 初始化块
       postingsWriter.init(metaOut, state); // have consumer write its format/header
 
       this.metaOut = metaOut;
@@ -347,6 +350,7 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
       lastField = field;
 
       // if (DEBUG) System.out.println("\nBTTW.write seg=" + segment + " field=" + field);
+      // 这个字段的term
       Terms terms = fields.terms(field);
       if (terms == null) {
         continue;

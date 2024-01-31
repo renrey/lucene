@@ -142,11 +142,11 @@ public abstract class Similarity {
      * finite and positive. {@code norm} is the encoded normalization factor as computed by {@link
      * Similarity#computeNorm(FieldInvertState)} at index time, or {@code 1} if norms are disabled.
      * {@code norm} is never {@code 0}.
-     *
+     * 相同norm，freq 越大，得分越大
      * <p>Score must not decrease when {@code freq} increases, ie. if {@code freq1 > freq2}, then
      * {@code score(freq1, norm) >= score(freq2, norm)} for any value of {@code norm} that may be
      * produced by {@link Similarity#computeNorm(FieldInvertState)}.
-     *
+     *相同freq，（不看符号）norm越大，得分越小
      * <p>Score must not increase when the unsigned {@code norm} increases, ie. if {@code
      * Long.compareUnsigned(norm1, norm2) > 0} then {@code score(freq, norm1) <= score(freq, norm2)}
      * for any legal {@code freq}.
@@ -155,9 +155,10 @@ public abstract class Similarity {
      * score(Float.MAX_VALUE, 1)}.
      *
      * @param freq sloppy term frequency, must be finite and positive
-     * @param norm encoded normalization factor or {@code 1} if norms are disabled
+     * @param norm encoded normalization factor or {@code 1} if norms are disabled 归一化因子，1则关闭
      * @return document's score
      */
+    // 给一个doc计算分数
     public abstract float score(float freq, long norm);
 
     /**

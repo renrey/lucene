@@ -87,9 +87,12 @@ public final class Lucene90CompressingStoredFieldsWriter extends StoredFieldsWri
   private final int maxDocsPerChunk;
 
   private final ByteBuffersDataOutput bufferedDocs;
+  // 存放的字段数量
   private int[] numStoredFields; // number of stored fields
   private int[] endOffsets; // end offsets in bufferedDocs
   private int docBase; // doc ID at the beginning of the chunk
+
+  // 当前块已到达的偏移量
   private int numBufferedDocs; // docBase + numBufferedDocs == current doc ID
 
   private long numChunks;
@@ -183,10 +186,12 @@ public final class Lucene90CompressingStoredFieldsWriter extends StoredFieldsWri
       this.numStoredFields = ArrayUtil.growExact(this.numStoredFields, newLength);
       endOffsets = ArrayUtil.growExact(endOffsets, newLength);
     }
+    // 把已记录字段数放入最后的数组位置
     this.numStoredFields[numBufferedDocs] = numStoredFieldsInDoc;
-    numStoredFieldsInDoc = 0;
+    numStoredFieldsInDoc = 0;// 已记录的字段数归0重置
+    // endOffsets最后位置= 自buffer的doc数量
     endOffsets[numBufferedDocs] = Math.toIntExact(bufferedDocs.size());
-    ++numBufferedDocs;
+    ++numBufferedDocs;//+1
     if (triggerFlush()) {
       flush(false);
     }

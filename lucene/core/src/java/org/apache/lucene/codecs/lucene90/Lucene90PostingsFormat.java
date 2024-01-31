@@ -407,6 +407,7 @@ public final class Lucene90PostingsFormat extends PostingsFormat {
     PostingsWriterBase postingsWriter = new Lucene90PostingsWriter(state);
     boolean success = false;
     try {
+      // tip索引writer
       FieldsConsumer ret =
           new Lucene90BlockTreeTermsWriter(
               state, postingsWriter, minTermBlockSize, maxTermBlockSize);

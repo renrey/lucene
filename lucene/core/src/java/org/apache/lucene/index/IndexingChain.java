@@ -250,6 +250,7 @@ final class IndexingChain implements Accountable {
             state.segmentSuffix);
 
     t0 = System.nanoTime();
+    // 写入文档值
     writeDocValues(state, sortMap);
     if (infoStream.isEnabled("IW")) {
       infoStream.message("IW", ((System.nanoTime() - t0) / 1000000) + " msec to write docValues");
@@ -276,6 +277,7 @@ final class IndexingChain implements Accountable {
           "IW", ((System.nanoTime() - t0) / 1000000) + " msec to finish stored fields");
     }
 
+    // write postings and finish vectors
     t0 = System.nanoTime();
     Map<String, TermsHashPerField> fieldsToFlush = new HashMap<>();
     for (int i = 0; i < fieldHash.length; i++) {
@@ -297,8 +299,10 @@ final class IndexingChain implements Accountable {
         // Use the merge instance in order to reuse the same IndexInput for all terms
         normsMergeInstance = norms.getMergeInstance();
       }
+      // 写入词倒排索引？
       termsHash.flush(fieldsToFlush, state, sortMap, normsMergeInstance);
     }
+    // 看信息是已写入倒排索引、词向量
     if (infoStream.isEnabled("IW")) {
       infoStream.message(
           "IW",
@@ -617,6 +621,8 @@ final class IndexingChain implements Accountable {
       // also count the number of unique fields indexed with postings
       docFieldIdx = 0;
       for (IndexableField field : document) {
+        // 处理字段
+        // 计数+1等
         if (processField(docID, field, docFields[docFieldIdx])) {
           fields[indexedFieldCount] = docFields[docFieldIdx];
           indexedFieldCount++;
@@ -629,6 +635,7 @@ final class IndexingChain implements Accountable {
         for (int i = 0; i < indexedFieldCount; i++) {
           fields[i].finish(docID);
         }
+        // 保存当前doc字段数
         finishStoredFields();
         // TODO: for broken docs, optimize termsHash.finishDocument
         try {

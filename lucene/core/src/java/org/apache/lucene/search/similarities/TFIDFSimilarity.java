@@ -414,8 +414,10 @@ public abstract class TFIDFSimilarity extends Similarity {
     double idf = 0d; // sum into a double before casting into a float
     List<Explanation> subs = new ArrayList<>();
     for (final TermStatistics stat : termStats) {
+      // 计算每个term的idf
       Explanation idfExplain = idfExplain(collectionStats, stat);
       subs.add(idfExplain);
+      // idf相加一起
       idf += idfExplain.getValue().floatValue();
     }
     return Explanation.match((float) idf, "idf(), sum of:", subs);
@@ -457,13 +459,26 @@ public abstract class TFIDFSimilarity extends Similarity {
     return SmallFloat.intToByte4(numTerms);
   }
 
+  /**
+   * 创建用于本次使用的评分器
+   * @param boost a multiplicative factor to apply to the produces scores
+   * @param collectionStats collection-level statistics, such as the number of tokens in the
+   *     collection.
+   * @param termStats term-level statistics, such as the document frequency of a term across the
+   *     collection.
+   * @return
+   */
   @Override
   public final SimScorer scorer(
       float boost, CollectionStatistics collectionStats, TermStatistics... termStats) {
+    /**
+     * 预先把基于本次查询term的当前字段的idf算好
+     */
+    // 1个term跟多个term处理不同，得到idf的计算不同
     final Explanation idf =
         termStats.length == 1
-            ? idfExplain(collectionStats, termStats[0])
-            : idfExplain(collectionStats, termStats);
+            ? idfExplain(collectionStats, termStats[0]) // 1个term
+            : idfExplain(collectionStats, termStats);//多个term（直接多个term的idf相加）
     float[] normTable = new float[256];
     for (int i = 1; i < 256; ++i) {
       int length = SmallFloat.byte4ToInt((byte) i);
@@ -494,10 +509,18 @@ public abstract class TFIDFSimilarity extends Similarity {
       this.normTable = normTable;
     }
 
+    /**
+     * 算分
+     * @param freq sloppy term frequency, must be finite and positive
+     * @param norm encoded normalization factor or {@code 1} if norms are disabled
+     * @return
+     */
     @Override
     public float score(float freq, long norm) {
+      // 就是tf * idf
       final float raw = tf(freq) * queryWeight; // compute tf(f)*weight
       float normValue = normTable[(int) (norm & 0xFF)];
+      // 再*归一化参数？
       return raw * normValue; // normalize for field
     }
 

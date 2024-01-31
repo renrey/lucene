@@ -122,7 +122,9 @@ public final class CodecUtil {
     if (id.length != StringHelper.ID_LENGTH) {
       throw new IllegalArgumentException("Invalid id: " + StringHelper.idToString(id));
     }
+    // 版本头等
     writeHeader(out, codec, version);
+    // 写入段id
     out.writeBytes(id, 0, id.length);
     BytesRef suffixBytes = new BytesRef(suffix);
     if (suffixBytes.length != suffix.length() || suffixBytes.length >= 256) {

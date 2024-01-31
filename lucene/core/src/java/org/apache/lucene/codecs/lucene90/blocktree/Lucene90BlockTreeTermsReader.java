@@ -132,6 +132,7 @@ public final class Lucene90BlockTreeTermsReader extends FieldsProducer {
               state.segmentInfo.getId(),
               state.segmentSuffix);
 
+      // tip索引
       String indexName =
           IndexFileNames.segmentFileName(segment, state.segmentSuffix, TERMS_INDEX_EXTENSION);
       indexIn = state.directory.openInput(indexName, state.context);

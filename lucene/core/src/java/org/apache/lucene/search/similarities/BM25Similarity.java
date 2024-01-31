@@ -102,11 +102,15 @@ public class BM25Similarity extends Similarity {
 
   /** Implemented as <code>log(1 + (docCount - docFreq + 0.5)/(docFreq + 0.5))</code>. */
   protected float idf(long docFreq, long docCount) {
+    /**
+     * 变为
+     */
     return (float) Math.log(1 + (docCount - docFreq + 0.5D) / (docFreq + 0.5D));
   }
 
   /** The default implementation computes the average as <code>sumTotalTermFreq / docCount</code> */
   protected float avgFieldLength(CollectionStatistics collectionStats) {
+    // 词数量/文档数
     return (float) (collectionStats.sumTotalTermFreq() / (double) collectionStats.docCount());
   }
 
@@ -124,6 +128,7 @@ public class BM25Similarity extends Similarity {
 
   static {
     for (int i = 0; i < 256; i++) {
+      // 0-255
       LENGTH_TABLE[i] = SmallFloat.byte4ToInt((byte) i);
     }
   }
@@ -196,6 +201,7 @@ public class BM25Similarity extends Similarity {
   @Override
   public final SimScorer scorer(
       float boost, CollectionStatistics collectionStats, TermStatistics... termStats) {
+    // 如tf-idf一样，先算idf
     Explanation idf =
         termStats.length == 1
             ? idfExplain(collectionStats, termStats[0])
@@ -204,6 +210,7 @@ public class BM25Similarity extends Similarity {
 
     float[] cache = new float[256];
     for (int i = 0; i < cache.length; i++) {
+      // 正常1：1/ k1 * (1-b+ (b/avgdl))
       cache[i] = 1f / (k1 * ((1 - b) + b * LENGTH_TABLE[i] / avgdl));
     }
     return new BM25Scorer(boost, k1, b, idf, avgdl, cache);
@@ -248,6 +255,7 @@ public class BM25Similarity extends Similarity {
       // Finally we expand weight * (1 - 1 / (1 + freq * 1/norm)) to
       // weight - weight / (1 + freq * 1/norm), which runs slightly faster.
       float normInverse = cache[((byte) encodedNorm) & 0xFF];
+      // idf- idf/(1+tf*guiyi)
       return weight - weight / (1f + freq * normInverse);
     }
 
