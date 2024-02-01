@@ -183,16 +183,18 @@ public final class SegmentInfos implements Cloneable, Iterable<SegmentCommitInfo
   /**
    * Get the generation of the most recent commit to the list of index files (N in the segments_N
    * file).
-   *
+   * 通过现成所有segment文件的文件名，找到当前最后的代
    * @param files -- array of file names to check
    */
   public static long getLastCommitGeneration(String[] files) {
     long max = -1;
     for (String file : files) {
+      // 文件名开头-segments
       if (file.startsWith(IndexFileNames.SEGMENTS)
           &&
           // skipping this file here helps deliver the right exception when opening an old index
           file.startsWith(OLD_SEGMENTS_GEN) == false) {
+        // 从文件名读取当前segment的代（segment代）
         long gen = generationFromSegmentsFileName(file);
         if (gen > max) {
           max = gen;
@@ -287,8 +289,10 @@ public final class SegmentInfos implements Cloneable, Iterable<SegmentCommitInfo
 
     long generation = generationFromSegmentsFileName(segmentFileName);
     // System.out.println(Thread.currentThread() + ": SegmentInfos.readCommit " + segmentFileName);
+    // 读取segment文件
     try (ChecksumIndexInput input = directory.openChecksumInput(segmentFileName, IOContext.READ)) {
       try {
+        // 解析返回SegmentInfos对象
         return readCommit(directory, input, generation, minSupportedMajorVersion);
       } catch (EOFException | NoSuchFileException | FileNotFoundException e) {
         throw new CorruptIndexException(
@@ -322,6 +326,7 @@ public final class SegmentInfos implements Cloneable, Iterable<SegmentCommitInfo
       input.readBytes(id, 0, id.length);
       CodecUtil.checkIndexHeaderSuffix(input, Long.toString(generation, Character.MAX_RADIX));
 
+      // 从输入流读取lucene版本
       Version luceneVersion =
           Version.fromBits(input.readVInt(), input.readVInt(), input.readVInt());
       int indexCreatedVersion = input.readVInt();

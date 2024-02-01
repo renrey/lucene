@@ -50,6 +50,7 @@ public abstract class ReferenceManager<G> implements Closeable {
     }
   }
 
+  // 更新当前对象，是sync
   private synchronized void swapReference(G newReference) throws IOException {
     ensureOpen();
     final G oldReference = current;
@@ -92,9 +93,11 @@ public abstract class ReferenceManager<G> implements Closeable {
     G ref;
 
     do {
+      // 就是看current是否还有
       if ((ref = current) == null) {
         throw new AlreadyClosedException(REFERENCE_MANAGER_IS_CLOSED_MSG);
       }
+      //计数 +1 成功后，返回current
       if (tryIncRef(ref)) {
         return ref;
       }
@@ -164,11 +167,15 @@ public abstract class ReferenceManager<G> implements Closeable {
       final G reference = acquire();
       try {
         notifyRefreshListenersBefore();
+        /**
+         * refresh时实际创建新对象，所以实际2个对象保证可以同时refresh跟使用
+         */
         G newReference = refreshIfNeeded(reference);
         if (newReference != null) {
           assert newReference != reference
               : "refreshIfNeeded should return null if refresh wasn't needed";
           try {
+            // 更新对象
             swapReference(newReference);
             refreshed = true;
           } finally {

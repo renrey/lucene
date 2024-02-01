@@ -950,6 +950,7 @@ public class IndexWriter
     try {
       directoryOrig = d;
       directory = new LockValidatingDirectoryWrapper(d, writeLock);
+      // merge调度器
       mergeScheduler = config.getMergeScheduler();
       mergeScheduler.initialize(infoStream, directoryOrig);
       OpenMode mode = config.getOpenMode();
@@ -958,7 +959,7 @@ public class IndexWriter
       if (mode == OpenMode.CREATE) {
         indexExists = DirectoryReader.indexExists(directory);
         create = true;
-      } else if (mode == OpenMode.APPEND) {
+      } else if (mode == OpenMode.APPEND) {// 已有文件
         indexExists = true;
         create = false;
       } else {
@@ -970,21 +971,24 @@ public class IndexWriter
       // If index is too old, reading the segments will throw
       // IndexFormatTooOldException.
 
+      // 获取入参目录的所有文件
       String[] files = directory.listAll();
 
       // Set up our initial SegmentInfos:
+      // 通过commit，获取segment信息
       IndexCommit commit = config.getIndexCommit();
 
       // Set up our initial SegmentInfos:
       StandardDirectoryReader reader;
+      // 没有commit，连reader都不使用
       if (commit == null) {
         reader = null;
       } else {
         reader = commit.getReader();
       }
 
-      if (create) {
-
+      if (create) {// 创建新的
+        // 肯定不能有commit
         if (config.getIndexCommit() != null) {
           // We cannot both open from a commit point and create:
           if (mode == OpenMode.CREATE) {
@@ -1000,6 +1004,7 @@ public class IndexWriter
         // against an index that's currently open for
         // searching.  In this case we write the next
         // segments_N file with no segments:
+        // 创建SegmentInfos 的汇总对象
         final SegmentInfos sis = new SegmentInfos(config.getIndexCreatedVersionMajor());
         if (indexExists) {
           final SegmentInfos previous = SegmentInfos.readLatestCommit(directory);
@@ -1013,6 +1018,8 @@ public class IndexWriter
         changed();
 
       } else if (reader != null) {
+        // 不新建文件，但配置有配置commit
+
         if (reader.segmentInfos.getIndexCreatedVersionMajor() < Version.MIN_SUPPORTED_MAJOR) {
           // second line of defence in the case somebody tries to trick us.
           throw new IllegalArgumentException(
@@ -1067,8 +1074,11 @@ public class IndexWriter
 
         rollbackSegments = lastCommit.createBackupSegmentInfos();
       } else {
+        // 不新建文件，且配置没配commit or 没配reader
         // Init from either the latest commit point, or an explicit prior commit point:
+        // 从commit point读取初始化
 
+        // 获取最后commit到磁盘的segment文件名， 名字：segment_n（n是当前segment的代）
         String lastSegmentsFile = SegmentInfos.getLastCommitSegmentsFileName(files);
         if (lastSegmentsFile == null) {
           throw new IndexNotFoundException(
@@ -1077,8 +1087,10 @@ public class IndexWriter
 
         // Do not use SegmentInfos.read(Directory) since the spooky
         // retrying it does is not necessary here (we hold the write lock):
+        // 从最后commit的segment文件读取，生成SegmentInfos对象
         segmentInfos = SegmentInfos.readCommit(directoryOrig, lastSegmentsFile);
 
+        // 即有配置commit，只是没reader
         if (commit != null) {
           // Swap out all segments, but, keep metadata in
           // SegmentInfos, like version & generation, to
@@ -1104,6 +1116,7 @@ public class IndexWriter
           }
         }
 
+        // 创建rollbackSegments：就是这个segmentInfos备份，避免commit失败
         rollbackSegments = segmentInfos.createBackupSegmentInfos();
       }
 
@@ -1118,8 +1131,13 @@ public class IndexWriter
 
       validateIndexSort();
 
+      /**
+       * flush策略
+       */
       config.getFlushPolicy().init(config);
       bufferedUpdatesStream = new BufferedUpdatesStream(infoStream);
+
+      // writer
       docWriter =
           new DocumentsWriter(
               flushNotifications,
@@ -1466,6 +1484,7 @@ public class IndexWriter
    * @throws IOException if there is a low-level IO error
    */
   public long addDocument(Iterable<? extends IndexableField> doc) throws IOException {
+    // 实际就是更新，不过没term
     return updateDocument(null, doc);
   }
 
@@ -1813,6 +1832,7 @@ public class IndexWriter
    * @throws IOException if there is a low-level IO error
    */
   public long updateDocument(Term term, Iterable<? extends IndexableField> doc) throws IOException {
+    // 就是有term，会生成TermNode
     return updateDocuments(
         term == null ? null : DocumentsWriterDeleteQueue.newNode(term), List.of(doc));
   }
@@ -5690,6 +5710,7 @@ public class IndexWriter
    * @return the given seqId inverted if negative.
    */
   private long maybeProcessEvents(long seqNo) throws IOException {
+    // 当前seqNo<0，执行所有event且触发merge
     if (seqNo < 0) {
       seqNo = -seqNo;
       processEvents(true);
