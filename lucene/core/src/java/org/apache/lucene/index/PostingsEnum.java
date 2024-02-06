@@ -23,6 +23,7 @@ import org.apache.lucene.util.BytesRef;
 /**
  * Iterates through the postings. NOTE: you must first call {@link #nextDoc} before using any of the
  * per-doc methods.
+ * posting 倒排索引的迭代操作
  */
 public abstract class PostingsEnum extends DocIdSetIterator {
 
@@ -35,6 +36,7 @@ public abstract class PostingsEnum extends DocIdSetIterator {
   /**
    * Flag to pass to {@link TermsEnum#postings(PostingsEnum, int)} if you require term frequencies
    * in the returned enum.
+   * 需要词频tf
    */
   public static final short FREQS = 1 << 3;
 

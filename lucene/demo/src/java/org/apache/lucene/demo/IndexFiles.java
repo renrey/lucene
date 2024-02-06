@@ -124,10 +124,12 @@ public class IndexFiles implements AutoCloseable {
     try {
       System.out.println("Indexing to directory '" + indexPath + "'...");
 
+      // 打开目录，创建Directory
       Directory dir = FSDirectory.open(Paths.get(indexPath));
       Analyzer analyzer = new StandardAnalyzer();
       IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
 
+      // 是否写入到已存在的index文件、还是新建index
       if (create) {
         // Create a new index in the directory, removing any
         // previously indexed documents:
@@ -152,8 +154,10 @@ public class IndexFiles implements AutoCloseable {
         vectorDictSize = vectorDictInstance.ramBytesUsed();
       }
 
+      // 创建IndexWriter-关键
       try (IndexWriter writer = new IndexWriter(dir, iwc);
           IndexFiles indexFiles = new IndexFiles(vectorDictInstance)) {
+        // 这里是遍历目录，对每个文件做索引
         indexFiles.indexDocs(writer, docDir);
 
         // NOTE: if you want to maximize search performance,
@@ -224,6 +228,7 @@ public class IndexFiles implements AutoCloseable {
     }
   }
 
+  // 索引一个记录doc
   /** Indexes a single document */
   void indexDoc(IndexWriter writer, Path file, long lastModified) throws IOException {
     try (InputStream stream = Files.newInputStream(file)) {
@@ -234,6 +239,7 @@ public class IndexFiles implements AutoCloseable {
       // field that is indexed (i.e. searchable), but don't tokenize
       // the field into separate words and don't index term frequency
       // or positional information:
+      // 1个string类型字段path
       Field pathField = new StringField("path", file.toString(), Field.Store.YES);
       doc.add(pathField);
 
@@ -250,6 +256,7 @@ public class IndexFiles implements AutoCloseable {
       // so that the text of the file is tokenized and indexed, but not stored.
       // Note that FileReader expects the file to be in UTF-8 encoding.
       // If that's not the case searching for special characters will fail.
+      // 这个定义了一个text类型字段，content，存的是当前文件的内容
       doc.add(
           new TextField(
               "contents",
@@ -274,6 +281,10 @@ public class IndexFiles implements AutoCloseable {
         // we use updateDocument instead to replace the old one matching the exact
         // path, if present:
         System.out.println("updating " + file);
+        /**
+         * 调用更新api
+         * 参数还会传入Term，包含对应的字段跟字段值
+         */
         writer.updateDocument(new Term("path", file.toString()), doc);
       }
     }

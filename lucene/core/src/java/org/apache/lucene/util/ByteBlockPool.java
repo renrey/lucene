@@ -110,7 +110,7 @@ public final class ByteBlockPool implements Accountable {
    * array of buffers currently used in the pool. Buffers are allocated if needed don't modify this
    * outside of this class.
    */
-  public byte[][] buffers = new byte[10][];
+  public byte[][] buffers = new byte[10][]; // 二维数组：10个块？
 
   /** index into the buffers array pointing to the current buffer used as the head */
   private int bufferUpto = -1; // Which buffer we are upto
@@ -299,13 +299,19 @@ public final class ByteBlockPool implements Accountable {
   // Fill in a BytesRef from term's length & bytes encoded in
   // byte block
   public void setBytesRef(BytesRef term, int textStart) {
+    // 就是把textStart下标的内容从buffer拷贝到term的byte数组中
+
+    // 根据前缀找到对应buffer那个块
     final byte[] bytes = term.bytes = buffers[textStart >> BYTE_BLOCK_SHIFT];
+    // 后16位就是在当前block（byte数组）的下标
     int pos = textStart & BYTE_BLOCK_MASK;
-    if ((bytes[pos] & 0x80) == 0) {
+
+    // 第1个byte是标志位
+    if ((bytes[pos] & 0x80) == 0) {// 第1个bit=0，代表长度位是1b
       // length is 1 byte
       term.length = bytes[pos];
       term.offset = pos + 1;
-    } else {
+    } else {// 第1个bit=1，代表长度位是2b
       // length is 2 bytes
       term.length = ((short) BitUtil.VH_BE_SHORT.get(bytes, pos)) & 0x7FFF;
       term.offset = pos + 2;

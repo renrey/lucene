@@ -32,15 +32,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Supplier;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexReaderContext;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.ReaderUtil;
-import org.apache.lucene.index.StoredFieldVisitor;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.*;
 import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.NIOFSDirectory;
@@ -200,6 +192,9 @@ public class IndexSearcher {
    * @lucene.experimental
    */
   public IndexSearcher(IndexReader r, Executor executor) {
+    /**
+     * @see org.apache.lucene.index.CompositeReader#getContext()
+     */
     this(r.getContext(), executor);
   }
 
@@ -230,6 +225,9 @@ public class IndexSearcher {
     this.executor = executor;
     this.sliceExecutor = sliceExecutor;
     this.readerContext = context;
+    /**
+     * @see CompositeReaderContext#leaves
+     */
     leafContexts = context.leaves();
     this.leafSlices = executor == null ? null : slices(leafContexts);
   }
@@ -503,32 +501,46 @@ public class IndexSearcher {
 
     final CollectorManager<TopScoreDocCollector, TopDocs> manager =
         new CollectorManager<TopScoreDocCollector, TopDocs>() {
-
+          // scoreMode 应该都是Top
           private final HitsThresholdChecker hitsThresholdChecker =
               (executor == null || leafSlices.length <= 1)
-                  ? HitsThresholdChecker.create(Math.max(TOTAL_HITS_THRESHOLD, numHits))
-                  : HitsThresholdChecker.createShared(Math.max(TOTAL_HITS_THRESHOLD, numHits));
+                  ? HitsThresholdChecker.create(Math.max(TOTAL_HITS_THRESHOLD, numHits))// 单个时
+                  : HitsThresholdChecker.createShared(Math.max(TOTAL_HITS_THRESHOLD, numHits));// 多个分片聚合
 
           private final MaxScoreAccumulator minScoreAcc =
               (executor == null || leafSlices.length <= 1) ? null : new MaxScoreAccumulator();
 
+          // Collector:收集不同leave执行的结果
           @Override
           public TopScoreDocCollector newCollector() throws IOException {
+            // 一般无after
+            /**
+             * 无after
+             * @see TopScoreDocCollector.SimpleTopScoreDocCollector
+             * 有after
+             * @see TopScoreDocCollector.PagingTopScoreDocCollector
+             */
             return TopScoreDocCollector.create(
                 cappedNumHits, after, hitsThresholdChecker, minScoreAcc);
           }
 
+          // 用于合并结果
           @Override
           public TopDocs reduce(Collection<TopScoreDocCollector> collectors) throws IOException {
-            final TopDocs[] topDocs = new TopDocs[collectors.size()];
+            final TopDocs[] topDocs = new TopDocs[collectors.size()];//数组大小使用collector数量
             int i = 0;
+            // 把每个collectors的doc集合放入topDocs
             for (TopScoreDocCollector collector : collectors) {
               topDocs[i++] = collector.topDocs();
             }
+            // 这个把所有collector结果（多个TopDocs）合并成1个TopDocs
+            // 就是调用mergeAux（合并成一个）
             return TopDocs.merge(0, cappedNumHits, topDocs);
           }
         };
-
+    /**
+     * 关键检索api
+     */
     return search(query, manager);
   }
 
@@ -681,16 +693,22 @@ public class IndexSearcher {
    */
   public <C extends Collector, T> T search(Query query, CollectorManager<C, T> collectorManager)
       throws IOException {
+    // 先建1个collectior（通过入参的collectorManager）
     final C firstCollector = collectorManager.newCollector();
-    query = rewrite(query);
+    query = rewrite(query);// 重写query
+    // 创建执行查询时使用的Weight，query=外部使用的查询参数,weight是更底层的使用查询的参数
     final Weight weight = createWeight(query, firstCollector.scoreMode(), 1);
+    // 进入下一步内部查询
     return search(weight, collectorManager, firstCollector);
   }
 
   private <C extends Collector, T> T search(
       Weight weight, CollectorManager<C, T> collectorManager, C firstCollector) throws IOException {
+    // 单个leaf执行
     if (executor == null || leafSlices.length <= 1) {
+      // 单个执行
       search(leafContexts, weight, firstCollector);
+      // firstCollector的结果交给manager处理reduce
       return collectorManager.reduce(Collections.singletonList(firstCollector));
     } else {
       final List<C> collectors = new ArrayList<>(leafSlices.length);
@@ -753,9 +771,14 @@ public class IndexSearcher {
     // TODO: should we make this
     // threaded...? the Collector could be sync'd?
     // always use single thread:
+    // 等于遍历每个segment的Readr
     for (LeafReaderContext ctx : leaves) { // search each subreader
       final LeafCollector leafCollector;
       try {
+        // 基于这个segment生成 1个collector
+        /**
+         * @see TopScoreDocCollector.SimpleTopScoreDocCollector#getLeafCollector(LeafReaderContext)
+         */
         leafCollector = collector.getLeafCollector(ctx);
       } catch (
           @SuppressWarnings("unused")
@@ -764,9 +787,18 @@ public class IndexSearcher {
         // continue with the following leaf
         continue;
       }
+      /**
+       * 通过Query的Weight对象拿到BulkScorer
+       * BulkScorer 是对一个基础scorer的包装类，作用是可以返回多个doc
+       */
       BulkScorer scorer = weight.bulkScorer(ctx);
+
+      // 代表有doc
       if (scorer != null) {
         try {
+          /**
+           * scorer计算得分，加入到leafCollector, 这里才会触发遍历命中doc
+           */
           scorer.score(leafCollector, ctx.reader().getLiveDocs());
         } catch (
             @SuppressWarnings("unused")
@@ -882,6 +914,7 @@ public class IndexSearcher {
    */
   public Weight createWeight(Query query, ScoreMode scoreMode, float boost) throws IOException {
     final QueryCache queryCache = this.queryCache;
+    // 创建包装个对应Query的Weight对象
     Weight weight = query.createWeight(this, scoreMode, boost);
     if (scoreMode.needsScores() == false && queryCache != null) {
       weight = queryCache.doCache(weight, queryCachingPolicy);

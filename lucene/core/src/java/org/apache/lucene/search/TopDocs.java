@@ -49,10 +49,10 @@ public class TopDocs {
   // Refers to one hit:
   private static final class ShardRef {
     // Which shard (index into shardHits[]):
-    final int shardIndex;
+    final int shardIndex;// shard下标（当前对象的标识）
 
     // Which hit within the shard:
-    int hitIndex;
+    int hitIndex;// 当前指向的doc下标（循环指针）
 
     ShardRef(int shardIndex) {
       this.shardIndex = shardIndex;
@@ -155,6 +155,7 @@ public class TopDocs {
       }
 
       final SortField[] sortFields = sort.getSort();
+      // 多种字段的比较器数组，每个字段1个比较器
       comparators = new FieldComparator[sortFields.length];
       reverseMul = new int[sortFields.length];
       for (int compIDX = 0; compIDX < sortFields.length; compIDX++) {
@@ -164,16 +165,19 @@ public class TopDocs {
       }
     }
 
+    // 重写了比较大小
     // Returns true if first is < second
     @Override
     public boolean lessThan(ShardRef first, ShardRef second) {
       assert first != second;
+      // 就是拿到这2个shard当前指向的doc
       final FieldDoc firstFD = (FieldDoc) shardHits[first.shardIndex][first.hitIndex];
       final FieldDoc secondFD = (FieldDoc) shardHits[second.shardIndex][second.hitIndex];
       // System.out.println("  lessThan:\n     first=" + first + " doc=" + firstFD.doc + " score=" +
       // firstFD.score + "\n    second=" + second + " doc=" + secondFD.doc + " score=" +
       // secondFD.score);
 
+      // 遍历字段comparators来比较
       for (int compIDX = 0; compIDX < comparators.length; compIDX++) {
         final FieldComparator comp = comparators[compIDX];
         // System.out.println("    cmp idx=" + compIDX + " cmp1=" + firstFD.fields[compIDX] + "
@@ -182,7 +186,7 @@ public class TopDocs {
         final int cmp =
             reverseMul[compIDX]
                 * comp.compareValues(firstFD.fields[compIDX], secondFD.fields[compIDX]);
-
+        // 只要不相等，就返回大小结果
         if (cmp != 0) {
           // System.out.println("    return " + (cmp < 0));
           return cmp < 0;
@@ -278,6 +282,9 @@ public class TopDocs {
   private static TopDocs mergeAux(
       Sort sort, int start, int size, TopDocs[] shardHits, Comparator<ScoreDoc> tieBreaker) {
 
+    // 优先级队列，每个元素就是当前的每个shard结果，在里面重写了这些shard在小堆顶的排序（比较）
+    // 支持多级字段比较
+    // 队列里shard的实时排序是排每个shard当前指向的doc（每个shard结果都有多个doc）
     final PriorityQueue<ShardRef> queue;
     if (sort == null) {
       queue = new ScoreMergeSortQueue(shardHits, tieBreaker);
@@ -312,17 +319,18 @@ public class TopDocs {
     if (availHitCount <= start) {
       hits = new ScoreDoc[0];
     } else {
-      // 减少申请的数组空间
+      // 申请的数组空间
       hits = new ScoreDoc[Math.min(size, availHitCount - start)];
       // 理论上最后一个数据的下标
       int requestedResultWindow = start + size;
-      //
+      // 实际最后一个数据下标（有可能超过数量上限）
       int numIterOnHits = Math.min(availHitCount, requestedResultWindow);
-      int hitUpto = 0;
-      // 开始遍历queue
+      int hitUpto = 0;// 循环开始下标（为了排序效果需要从头开始，未排序不可能从topn下标开始拿）
+      // 开始遍历queue-》从头遍历
       while (hitUpto < numIterOnHits) {
         assert queue.size() > 0;
-        ShardRef ref = queue.top();
+        ShardRef ref = queue.top();// 拿到当前最小的doc所在的shard
+        // 这里把ShardRef的hitIndex（当前指向doc下标）-1，等于当前最小doc已被取出
         final ScoreDoc hit = shardHits[ref.shardIndex].scoreDocs[ref.hitIndex++];
 
         // Irrespective of whether we use shard indices for tie breaking or not, we check for
@@ -336,16 +344,20 @@ public class TopDocs {
 
         unsetShardIndex |= hit.shardIndex == -1;
 
+        // 当前下标在目标start后，才会放入结果hit数组
         if (hitUpto >= start) {
           hits[hitUpto - start] = hit;
         }
 
-        hitUpto++;
+        hitUpto++;// +1
 
+        // 当前shard结果的doc还没取完
         if (ref.hitIndex < shardHits[ref.shardIndex].scoreDocs.length) {
           // Not done with this these TopDocs yet:
+          // 因为上面把hitIndex-1了，所以更新优先队列里的排序
           queue.updateTop();
         } else {
+          // 当前shard结果的doc已用完，可以从队列去除，变相也更新队列排序
           queue.pop();
         }
       }

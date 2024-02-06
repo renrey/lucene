@@ -378,7 +378,7 @@ public final class SegmentInfos implements Cloneable, Iterable<SegmentCommitInfo
     infos.version = CodecUtil.readBELong(input);
     // System.out.println("READ sis version=" + infos.version);
     infos.counter = input.readVLong();
-    int numSegments = CodecUtil.readBEInt(input);
+    int numSegments = CodecUtil.readBEInt(input);//读取segment数量
     if (numSegments < 0) {
       throw new CorruptIndexException("invalid segment count: " + numSegments, input);
     }
@@ -391,11 +391,12 @@ public final class SegmentInfos implements Cloneable, Iterable<SegmentCommitInfo
     }
 
     long totalDocs = 0;
+    // 循环segment数，从commit文件一直读取
     for (int seg = 0; seg < numSegments; seg++) {
-      String segName = input.readString();
+      String segName = input.readString();// segment名字
       byte[] segmentID = new byte[StringHelper.ID_LENGTH];
-      input.readBytes(segmentID, 0, segmentID.length);
-      Codec codec = readCodec(input);
+      input.readBytes(segmentID, 0, segmentID.length);//长度
+      Codec codec = readCodec(input);// 使用的codec
       SegmentInfo info =
           codec.segmentInfoFormat().read(directory, segName, segmentID, IOContext.READ);
       info.setCodec(codec);
@@ -451,6 +452,8 @@ public final class SegmentInfos implements Cloneable, Iterable<SegmentCommitInfo
         dvUpdateFiles = Collections.unmodifiableMap(map);
       }
       siPerCommit.setDocValuesUpdatesFiles(dvUpdateFiles);
+
+      // 加入
       infos.add(siPerCommit);
 
       Version segmentVersion = info.getVersion();

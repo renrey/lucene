@@ -362,6 +362,7 @@ public class MMapDirectory extends FSDirectory {
       final Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
       // first check if Unsafe has the right method, otherwise we can give up
       // without doing any security critical stuff:
+      // 需要invokeCleaner
       final MethodHandle unmapper =
           lookup.findVirtual(
               unsafeClass, "invokeCleaner", methodType(void.class, ByteBuffer.class));
@@ -369,6 +370,8 @@ public class MMapDirectory extends FSDirectory {
       final Field f = unsafeClass.getDeclaredField("theUnsafe");
       f.setAccessible(true);
       final Object theUnsafe = f.get(null);
+
+      // 返回BufferCleaner
       return newBufferCleaner(unmapper.bindTo(theUnsafe));
     } catch (SecurityException se) {
       return "Unmapping is not supported, because not all required permissions are given to the Lucene JAR file: "

@@ -493,6 +493,7 @@ final class DocumentsWriterFlushControl implements Accountable, Closeable {
 
   DocumentsWriterPerThread obtainAndLock() {
     while (closed == false) {
+      // 从DocumentsWriterPerThread池里获取 1个dwpt，对它加锁
       final DocumentsWriterPerThread perThread = perThreadPool.getAndLock();
       if (perThread.deleteQueue == documentsWriter.deleteQueue) {
         // simply return the DWPT even in a flush all case since we already hold the lock and the

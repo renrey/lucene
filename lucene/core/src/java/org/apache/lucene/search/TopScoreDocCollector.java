@@ -68,9 +68,11 @@ public abstract class TopScoreDocCollector extends TopDocsCollector<ScoreDoc> {
           }
         }
 
+        // 这个方法可知其实检索结果docId已全都放到pq
+        // 只是按顺序把每个doc的分数取出，并通过赋值doc的score后，在pq这个优先队列里排序
         @Override
         public void collect(int doc) throws IOException {
-          float score = scorer.score();
+          float score = scorer.score();// 从scorer获取当前doc的score
 
           // This collector relies on the fact that scorers produce positive values:
           assert score >= 0; // NOTE: false for NaN
@@ -93,8 +95,9 @@ public abstract class TopScoreDocCollector extends TopDocsCollector<ScoreDoc> {
             // documents with lower doc Ids. Therefore reject those docs too.
             return;
           }
-          pqTop.doc = doc + docBase;
-          pqTop.score = score;
+          pqTop.doc = doc + docBase;// 真是docId（doc是偏移量）
+          pqTop.score = score;// 分数
+          // 更新优先队列的堆顶 没分数会排前面
           pqTop = pq.updateTop();
           updateMinCompetitiveScore(scorer);
         }
@@ -243,8 +246,10 @@ public abstract class TopScoreDocCollector extends TopDocsCollector<ScoreDoc> {
     }
 
     if (after == null) {
+      // 常用的
       return new SimpleTopScoreDocCollector(numHits, hitsThresholdChecker, minScoreAcc);
     } else {
+      // 这个看着就是分页用的，从某个下标开始
       return new PagingTopScoreDocCollector(numHits, after, hitsThresholdChecker, minScoreAcc);
     }
   }

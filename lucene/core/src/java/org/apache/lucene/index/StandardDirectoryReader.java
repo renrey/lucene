@@ -84,17 +84,22 @@ public final class StandardDirectoryReader extends DirectoryReader {
                   + " but was: "
                   + minSupportedMajorVersion);
         }
+        // 读取commit文件，获取当前segment最新信息
         SegmentInfos sis =
             SegmentInfos.readCommit(directory, segmentFileName, minSupportedMajorVersion);
+        // 生成一堆SegmentReader
         final SegmentReader[] readers = new SegmentReader[sis.size()];
         boolean success = false;
         try {
+          // 每个segment1个SegmentReader
           for (int i = sis.size() - 1; i >= 0; i--) {
             readers[i] =
                 new SegmentReader(sis.info(i), sis.getIndexCreatedVersionMajor(), IOContext.READ);
           }
           // This may throw CorruptIndexException if there are too many docs, so
           // it must be inside try clause so we close readers in that case:
+          // 最后返回1个包装reader，包含多个segmentReader以及SegmentInfo
+          // 里面leafreaders 就是 这些SegmentReader
           DirectoryReader reader =
               new StandardDirectoryReader(directory, readers, null, sis, leafSorter, false, false);
           success = true;

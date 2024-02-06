@@ -778,6 +778,7 @@ public class PackedInts {
     if (maxValue < 0) {
       throw new IllegalArgumentException("maxValue must be non-negative (got: " + maxValue + ")");
     }
+    // 返回的是最高位1的bit
     return unsignedBitsRequired(maxValue);
   }
 
@@ -788,6 +789,7 @@ public class PackedInts {
    * @lucene.internal
    */
   public static int unsignedBitsRequired(long bits) {
+    // 实际是找到最高位1的bit
     return Math.max(1, 64 - Long.numberOfLeadingZeros(bits));
   }
 

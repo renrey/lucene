@@ -701,6 +701,7 @@ public class BlockTermsReader extends FieldsProducer {
         state.copyFrom(otherState);
         seekPending = true;
         indexIsCurrent = false;
+        //
         term.copyBytes(target);
       }
 

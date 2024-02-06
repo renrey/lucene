@@ -80,6 +80,7 @@ final class ApproximatePriorityQueue<T> {
         break;
       }
       final T entry = slots.get(nextUsedSlot);
+      // 看着不成功就是会循环
       if (predicate.test(entry)) {
         usedSlots &= ~(1L << nextUsedSlot);
         slots.set(nextUsedSlot, null);

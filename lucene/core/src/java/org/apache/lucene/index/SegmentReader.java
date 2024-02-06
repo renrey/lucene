@@ -92,8 +92,10 @@ public final class SegmentReader extends CodecReader {
     segDocValues = new SegmentDocValues();
 
     boolean success = false;
+    // 使用的codec
     final Codec codec = si.info.getCodec();
     try {
+      // 有删除？
       if (si.hasDeletions()) {
         // NOTE: the bitvector is stored using the regular directory, not cfs
         hardLiveDocs =
@@ -104,6 +106,7 @@ public final class SegmentReader extends CodecReader {
       }
       numDocs = si.info.maxDoc() - si.getDelCount();
 
+      // 加载当前segment的所有的fieldinfo
       fieldInfos = initFieldInfos();
       docValuesProducer = initDocValuesProducer();
       assert assertLiveDocs(isNRT, hardLiveDocs, liveDocs);

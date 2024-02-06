@@ -89,6 +89,7 @@ final class DocumentsWriter implements Closeable, Accountable {
 
   private final LiveIndexWriterConfig config;
 
+  // 看英文，代表当前有多少条doc在内存
   private final AtomicInteger numDocsInRAM = new AtomicInteger(0);
 
   // TODO: cut over to BytesRefHash in BufferedDeletes
@@ -122,9 +123,10 @@ final class DocumentsWriter implements Closeable, Accountable {
         new DocumentsWriterPerThreadPool(
             () -> {
               final FieldInfos.Builder infos = new FieldInfos.Builder(globalFieldNumberMap);
+              // 创建DocumentsWriterPerThread
               return new DocumentsWriterPerThread(
                   indexCreatedVersionMajor,
-                  segmentNameSupplier.get(),
+                  segmentNameSupplier.get(),// segment名：_gen
                   directoryOrig,
                   directory,
                   config,
@@ -413,12 +415,13 @@ final class DocumentsWriter implements Closeable, Accountable {
     return hasEvents;
   }
 
-  long updateDocuments(
+   long updateDocuments(
       final Iterable<? extends Iterable<? extends IndexableField>> docs,
       final DocumentsWriterDeleteQueue.Node<?> delNode)
       throws IOException {
     boolean hasEvents = preUpdate();
-
+    // 获取1个DocumentsWriterPerThread，对它执行自身的加锁
+    // dwpt也是只能串行，代表可能会被多线程调用
     final DocumentsWriterPerThread dwpt = flushControl.obtainAndLock();
     final DocumentsWriterPerThread flushingDWPT;
     long seqNo;
@@ -430,6 +433,9 @@ final class DocumentsWriter implements Closeable, Accountable {
       try {
         /**
          * 执行
+         * add时delNode=null
+         *
+         * numDocsInRAM::incrementAndGet：应该就是新增成功后执行的，代表doc记录数+1，实际每次都执行（无论是上层新增or更新，在这底层都是新增doc）
          */
         seqNo =
             dwpt.updateDocuments(docs, delNode, flushNotifications, numDocsInRAM::incrementAndGet);
@@ -439,11 +445,14 @@ final class DocumentsWriter implements Closeable, Accountable {
         }
       }
       final boolean isUpdate = delNode != null && delNode.isDelete();
+      // 执行后执行？
       flushingDWPT = flushControl.doAfterDocument(dwpt, isUpdate);
     } finally {
       if (dwpt.isFlushPending() || dwpt.isAborted()) {
         dwpt.unlock();
       } else {
+        // 解锁
+        // 本次使用DocumentsWriterPerThread（dwpt）加入到freelist复用
         perThreadPool.marksAsFreeAndUnlock(dwpt);
       }
       assert dwpt.isHeldByCurrentThread() == false : "we didn't release the dwpt even on abort";

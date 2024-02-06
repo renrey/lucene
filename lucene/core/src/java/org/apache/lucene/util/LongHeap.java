@@ -49,7 +49,7 @@ public final class LongHeap {
     // NOTE: we add +1 because all access to heap is 1-based not 0-based.  heap[0] is unused.
     heapSize = maxSize + 1;
     this.maxSize = maxSize;
-    this.heap = new long[heapSize];
+    this.heap = new long[heapSize];//预留多1个long，但实际是没用的
   }
 
   /**

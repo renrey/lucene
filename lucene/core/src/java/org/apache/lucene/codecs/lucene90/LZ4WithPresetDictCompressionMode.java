@@ -159,33 +159,43 @@ public final class LZ4WithPresetDictCompressionMode extends CompressionMode {
     }
 
     private void doCompress(byte[] bytes, int dictLen, int len, DataOutput out) throws IOException {
-      long prevCompressedSize = compressed.size();
+      long prevCompressedSize = compressed.size();//在执行前，已压缩大小
+      // 压缩·
       LZ4.compressWithDictionary(bytes, 0, dictLen, len, compressed, hashTable);
       // Write the number of compressed bytes
-      out.writeVInt(Math.toIntExact(compressed.size() - prevCompressedSize));
+      out.writeVInt(Math.toIntExact(compressed.size() - prevCompressedSize));// 写入本次压缩的大小
     }
 
     @Override
     public void compress(byte[] bytes, int off, int len, DataOutput out) throws IOException {
+      // len: 入参内容的字节数组长度
+
+      // dict长度 = 字节数组长度/ subblock大小（20）
       final int dictLength = len / (NUM_SUB_BLOCKS * DICT_SIZE_FACTOR);
+      // block 长度=
       final int blockLength = (len - dictLength + NUM_SUB_BLOCKS - 1) / NUM_SUB_BLOCKS;
+      // 要求buffer长度=dictLength+blockLength
       buffer = ArrayUtil.grow(buffer, dictLength + blockLength);
+      // 写入2个长度
       out.writeVInt(dictLength);
       out.writeVInt(blockLength);
       final int end = off + len;
 
       compressed.reset();
+      // 1. 先压缩字典？
       // Compress the dictionary first
-      System.arraycopy(bytes, off, buffer, 0, dictLength);
-      doCompress(buffer, 0, dictLength, out);
+      System.arraycopy(bytes, off, buffer, 0, dictLength);// 先拷贝到buffer，复制dictLength长度，应该是要写dictLength长度的内容
+      doCompress(buffer, 0, dictLength, out);// 开始压缩
 
       // And then sub blocks
+      // 2. 压缩子block
       for (int start = off + dictLength; start < end; start += blockLength) {
         int l = Math.min(blockLength, off + len - start);
         System.arraycopy(bytes, start, buffer, dictLength, l);
         doCompress(buffer, dictLength, l, out);
       }
 
+      // 拷贝compressed已压缩的字节数组 到 目标out
       // We only wrote lengths so far, now write compressed data
       compressed.copyTo(out);
     }

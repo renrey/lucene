@@ -35,6 +35,7 @@ class FreqProxFields extends Fields {
 
   public FreqProxFields(List<FreqProxTermsWriterPerField> fieldList) {
     // NOTE: fields are already sorted by field name
+    // 看着就是个放FreqProxTermsWriterPerField的map
     for (FreqProxTermsWriterPerField field : fieldList) {
       fields.put(field.getFieldName(), field);
     }
@@ -48,6 +49,7 @@ class FreqProxFields extends Fields {
   @Override
   public Terms terms(String field) throws IOException {
     FreqProxTermsWriterPerField perField = fields.get(field);
+    // 把对应的field对象包装到1个FreqProxTerms中（里面应该等于多个term）
     return perField == null ? null : new FreqProxTerms(perField);
   }
 
@@ -56,6 +58,8 @@ class FreqProxFields extends Fields {
     throw new UnsupportedOperationException();
   }
 
+
+  // 这个FreqProxTerm 集合的包装
   private static class FreqProxTerms extends Terms {
     final FreqProxTermsWriterPerField terms;
 
@@ -65,6 +69,7 @@ class FreqProxFields extends Fields {
 
     @Override
     public TermsEnum iterator() {
+      // 生成单个FreqProxTerm，但里面还是封装着FreqProxTermsWriterPerField整个field
       FreqProxTermsEnum termsEnum = new FreqProxTermsEnum(terms);
       termsEnum.reset();
       return termsEnum;
@@ -122,7 +127,7 @@ class FreqProxFields extends Fields {
     final FreqProxTermsWriterPerField terms;
     final int[] sortedTermIDs;
     final FreqProxPostingsArray postingsArray;
-    final BytesRef scratch = new BytesRef();
+    final BytesRef scratch = new BytesRef();// 申请一个用于存放返回的byte数组，复用避免重复申请
     final int numTerms;
     int ord;
 
@@ -184,12 +189,17 @@ class FreqProxFields extends Fields {
 
     @Override
     public BytesRef next() {
-      ord++;
-      if (ord >= numTerms) {
+      ord++;// 当前下标+1
+      if (ord >= numTerms) {// 超过了，无
         return null;
-      } else {
-        int textStart = postingsArray.textStarts[sortedTermIDs[ord]];
+      } else { // 下标还有数据
+
+        // 拿到当前term 在 bytesHash 字节数组的开始下标
+        int textStart = postingsArray.textStarts[sortedTermIDs[ord]];// sortedTermIDs[ord]:当前term的Id，textStarts：bytesHash中下标
+
+        // 把对应term的byte数组从terms的buffer （byte数组池）中拷贝到中间使用的scratch
         terms.bytePool.setBytesRef(scratch, textStart);
+        // 返回中间使用的byte数组
         return scratch;
       }
     }

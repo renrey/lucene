@@ -98,27 +98,35 @@ public final class CompositeReaderContext extends IndexReaderContext {
 
     private IndexReaderContext build(
         CompositeReaderContext parent, IndexReader reader, int ord, int docBase) {
+      // 子reader
       if (reader instanceof LeafReader) {
         final LeafReader ar = (LeafReader) reader;
         final LeafReaderContext atomic =
             new LeafReaderContext(parent, ar, ord, docBase, leaves.size(), leafDocBase);
-        leaves.add(atomic);
+        leaves.add(atomic);// 新增LeafReaderContext到leaves
         leafDocBase += reader.maxDoc();
         return atomic;
       } else {
+        // 上层组合的
         final CompositeReader cr = (CompositeReader) reader;
         final List<? extends IndexReader> sequentialSubReaders = cr.getSequentialSubReaders();
         final List<IndexReaderContext> children =
             Arrays.asList(new IndexReaderContext[sequentialSubReaders.size()]);
         final CompositeReaderContext newParent;
+
+        // 创建新的CompositeReaderContext
         if (parent == null) {
-          newParent = new CompositeReaderContext(cr, children, leaves);
+          newParent = new CompositeReaderContext(cr, children, leaves);//
         } else {
           newParent = new CompositeReaderContext(parent, cr, ord, docBase, children);
         }
+
         int newDocBase = 0;
         for (int i = 0, c = sequentialSubReaders.size(); i < c; i++) {
           final IndexReader r = sequentialSubReaders.get(i);
+          /**
+           * 构建leafReaderContext, 触发leave中新增
+           */
           children.set(i, build(newParent, r, i, newDocBase));
           newDocBase += r.maxDoc();
         }

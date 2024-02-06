@@ -17,6 +17,8 @@
 package org.apache.lucene.codecs;
 
 import java.io.IOException;
+
+import org.apache.lucene.codecs.lucene90.Lucene90PostingsWriter;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.NumericDocValues;
@@ -122,26 +124,37 @@ public abstract class PushPostingsWriterBase extends PostingsWriterBase {
     } else {
       normValues = norms.getNorms(fieldInfo);
     }
+    // term 前置操作
     startTerm(normValues);
     postingsEnum = termsEnum.postings(postingsEnum, enumFlags);
     assert postingsEnum != null;
 
     int docFreq = 0;
     long totalTermFreq = 0;
+    // 遍历postingsEnum中doc
     while (true) {
-      int docID = postingsEnum.nextDoc();
+      int docID = postingsEnum.nextDoc();// 拿到的是docId
       if (docID == PostingsEnum.NO_MORE_DOCS) {
         break;
       }
       docFreq++;
+      // FixedBitSet位图中更新对应docId的bit为1
+      // 即用位图表示当前term在对应doc中出现
       docsSeen.set(docID);
+
+      // 写入当前term在当前doc的tf
       int freq;
       if (writeFreqs) {
+        // postingsEnum有记录tf
         freq = postingsEnum.freq();
         totalTermFreq += freq;
       } else {
         freq = -1;
       }
+      /**
+       * 执行写入tf
+       * @see Lucene90PostingsWriter#startDoc(int, int)
+       */
       startDoc(docID, freq);
 
       if (writePositions) {

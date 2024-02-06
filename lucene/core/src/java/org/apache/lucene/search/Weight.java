@@ -25,7 +25,7 @@ import org.apache.lucene.util.Bits;
 
 /**
  * Expert: Calculate query weights and build query scorers.
- *
+ * 就计算query 的权重、构建query的得分器
  * <p>The purpose of {@link Weight} is to ensure searching does not modify a {@link Query}, so that
  * a {@link Query} instance can be reused.
  *
@@ -162,8 +162,13 @@ public abstract class Weight implements SegmentCacheable {
    * @throws IOException if there is a low-level I/O error
    */
   public BulkScorer bulkScorer(LeafReaderContext context) throws IOException {
-
+    /**
+     * 从Query获取scorer
+     * 例如
+     * @see TermQuery.TermWeight#scorer(LeafReaderContext)
+     */
     Scorer scorer = scorer(context);
+    // 没sorer等于没匹配doc？可能scorer方法就进行了检索
     if (scorer == null) {
       // No docs match
       return null;
@@ -171,6 +176,7 @@ public abstract class Weight implements SegmentCacheable {
 
     // This impl always scores docs in order, so we can
     // ignore scoreDocsInOrder:
+    // 包装返回score
     return new DefaultBulkScorer(scorer);
   }
 
@@ -223,11 +229,16 @@ public abstract class Weight implements SegmentCacheable {
     @Override
     public int score(LeafCollector collector, Bits acceptDocs, int min, int max)
         throws IOException {
+      // 调用setScorer
       collector.setScorer(scorer);
+
       DocIdSetIterator scorerIterator = twoPhase == null ? iterator : twoPhase.approximation();
       DocIdSetIterator competitiveIterator = collector.competitiveIterator();
       DocIdSetIterator filteredIterator;
       if (competitiveIterator == null) {
+        /**
+         * 使用被包装的scorer的iterator()
+         */
         filteredIterator = scorerIterator;
       } else {
         // Wrap CompetitiveIterator and ScorerIterator start with (i.e., calling nextDoc()) the last
@@ -243,7 +254,9 @@ public abstract class Weight implements SegmentCacheable {
         filteredIterator =
             ConjunctionUtils.intersectIterators(Arrays.asList(scorerIterator, competitiveIterator));
       }
+      // 无filter缓存
       if (filteredIterator.docID() == -1 && min == 0 && max == DocIdSetIterator.NO_MORE_DOCS) {
+        // 对所有遍历、算分
         scoreAll(collector, filteredIterator, twoPhase, acceptDocs);
         return DocIdSetIterator.NO_MORE_DOCS;
       } else {
@@ -298,10 +311,15 @@ public abstract class Weight implements SegmentCacheable {
         Bits acceptDocs)
         throws IOException {
       if (twoPhase == null) {
+        // 执行迭代器，遍历doc
         for (int doc = iterator.nextDoc();
             doc != DocIdSetIterator.NO_MORE_DOCS;
             doc = iterator.nextDoc()) {
+          // 执行
           if (acceptDocs == null || acceptDocs.get(doc)) {
+            /**
+             * @see TopScoreDocCollector.SimpleTopScoreDocCollector#getLeafCollector(LeafReaderContext)
+             */
             collector.collect(doc);
           }
         }

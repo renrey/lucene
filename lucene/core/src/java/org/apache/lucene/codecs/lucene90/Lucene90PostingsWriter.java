@@ -67,7 +67,7 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
 
   final long[] docDeltaBuffer;
   final long[] freqBuffer;
-  private int docBufferUpto;
+  private int docBufferUpto; // 当前block的doc数量
 
   final long[] posDeltaBuffer;
   final long[] payloadLengthBuffer;
@@ -78,6 +78,7 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
   private byte[] payloadBytes;
   private int payloadByteUpto;
 
+  // lastBlock 指的是最新的block开始
   private int lastBlockDocID;
   private long lastBlockPosFP;
   private long lastBlockPayFP;
@@ -100,6 +101,7 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
   /** Creates a postings writer */
   public Lucene90PostingsWriter(SegmentWriteState state) throws IOException {
 
+    // doc文件：term在的doc，及其tf
     String docFileName =
         IndexFileNames.segmentFileName(
             state.segmentInfo.name, state.segmentSuffix, Lucene90PostingsFormat.DOC_EXTENSION);
@@ -113,6 +115,7 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
       pforUtil = new PForUtil(new ForUtil());
       if (state.fieldInfos.hasProx()) {
         posDeltaBuffer = new long[BLOCK_SIZE];
+        // pos文件：term在doc的具体position
         String posFileName =
             IndexFileNames.segmentFileName(
                 state.segmentInfo.name, state.segmentSuffix, Lucene90PostingsFormat.POS_EXTENSION);
@@ -137,6 +140,7 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
         }
 
         if (state.fieldInfos.hasPayloads() || state.fieldInfos.hasOffsets()) {
+          // pay文件：pos下再具体的信息
           String payFileName =
               IndexFileNames.segmentFileName(
                   state.segmentInfo.name,
@@ -166,6 +170,7 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
     freqBuffer = new long[BLOCK_SIZE];
 
     // TODO: should we try skipping every 2/4 blocks...?
+    // doc文件中的skip data
     skipWriter =
         new Lucene90SkipWriter(
             MAX_SKIP_LEVELS, BLOCK_SIZE, state.segmentInfo.maxDoc(), docOut, posOut, payOut);
@@ -193,7 +198,9 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
 
   @Override
   public void startTerm(NumericDocValues norms) {
+    // doc文件下标
     docStartFP = docOut.getFilePointer();
+    // pos、 pay文件下标
     if (writePositions) {
       posStartFP = posOut.getFilePointer();
       if (writePayloads || writeOffsets) {
@@ -202,6 +209,7 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
     }
     lastDocID = 0;
     lastBlockDocID = -1;
+    // skip data writer重置（更新属性）
     skipWriter.resetSkip();
     this.norms = norms;
     competitiveFreqNormAccumulator.clear();
@@ -224,6 +232,7 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
       competitiveFreqNormAccumulator.clear();
     }
 
+    // docDelta ——》距离当前block第1个docId的id数值差距
     final int docDelta = docID - lastDocID;
 
     if (docID < 0 || (docCount > 0 && docDelta <= 0)) {
@@ -231,15 +240,22 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
           "docs out of order (" + docID + " <= " + lastDocID + " )", docOut);
     }
 
-    docDeltaBuffer[docBufferUpto] = docDelta;
+    // 往这2种（属于当前block的）数据buffer加入当前doc相关的数据
+    docDeltaBuffer[docBufferUpto] = docDelta;// 用于算当前block下标的docId
     if (writeFreqs) {
-      freqBuffer[docBufferUpto] = termDocFreq;
+      freqBuffer[docBufferUpto] = termDocFreq;// 当前block下标的tf
     }
 
-    docBufferUpto++;
-    docCount++;
+    docBufferUpto++;// 当前block的doc数+1
+    docCount++;// doc总数+1？
 
+    // 当前block的doc达到上限
     if (docBufferUpto == BLOCK_SIZE) {
+      /**
+       * packed_block实现：
+       * 把当前block的docDeltaBuffer、freqBuffer分别写入到doc文件中
+       * pforUtil -> packed_block的具体实现！！！
+       */
       pforUtil.encode(docDeltaBuffer, docOut);
       if (writeFreqs) {
         pforUtil.encode(freqBuffer, docOut);
@@ -335,7 +351,10 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
     // Since we don't know df for current term, we had to buffer
     // those skip data for each block, and when a new doc comes,
     // write them to skip file.
+
+    // doc 缓冲区数量达到 1个block大小（128个），刷新block
     if (docBufferUpto == BLOCK_SIZE) {
+      // 更新lastBlock属性，就是最新的block的开始属性
       lastBlockDocID = lastDocID;
       if (posOut != null) {
         if (payOut != null) {

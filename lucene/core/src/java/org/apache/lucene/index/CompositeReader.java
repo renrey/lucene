@@ -96,6 +96,7 @@ public abstract class CompositeReader extends IndexReader {
     // hurt!
     if (readerContext == null) {
       assert getSequentialSubReaders() != null;
+      // 创建新readercontext
       readerContext = CompositeReaderContext.create(this);
     }
     return readerContext;

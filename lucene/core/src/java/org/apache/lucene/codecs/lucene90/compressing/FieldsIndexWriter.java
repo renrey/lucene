@@ -80,11 +80,23 @@ public final class FieldsIndexWriter implements Closeable {
     this.id = id;
     this.blockShift = blockShift;
     this.ioContext = ioContext;
+    /**
+     * 其实就在fdt文件上检索的索引
+     *  通过2个文件来表现索引：
+     *  1. doc_ids （docid偏移量，距离本文件的base）
+     *  2. file_pointers（fdt文件偏移量）
+     */
+
+    // 打开输出流，后缀= ${codecName}-doc_ids
     this.docsOut = dir.createTempOutput(name, codecName + "-doc_ids", ioContext);
     boolean success = false;
     try {
+      // 往文件写入header
       CodecUtil.writeHeader(docsOut, codecName + "Docs", VERSION_CURRENT);
+
+      // 打开输出流，后缀= ${codecName}-file_pointers
       filePointersOut = dir.createTempOutput(name, codecName + "file_pointers", ioContext);
+      // 写入header
       CodecUtil.writeHeader(filePointersOut, codecName + "FilePointers", VERSION_CURRENT);
       success = true;
     } finally {
@@ -96,10 +108,16 @@ public final class FieldsIndexWriter implements Closeable {
 
   void writeIndex(int numDocs, long startPointer) throws IOException {
     assert startPointer >= previousFP;
+    // doc_ids文件 写入本次的doc数
     docsOut.writeVInt(numDocs);
+    // file_pointers 写入：这次写入doc的开始下标距离上次开始下标的 fdt偏移量
     filePointersOut.writeVLong(startPointer - previousFP);
+
+    // 下标变成这次新增的fdt开始下标
     previousFP = startPointer;
-    totalDocs += numDocs;
+    totalDocs += numDocs;// doc数量+1
+
+    // 等于新增了1个chunk
     totalChunks++;
   }
 

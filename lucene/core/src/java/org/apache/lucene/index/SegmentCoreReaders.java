@@ -34,6 +34,7 @@ import org.apache.lucene.codecs.PointsReader;
 import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.TermVectorsReader;
+import org.apache.lucene.codecs.perfield.PerFieldPostingsFormat;
 import org.apache.lucene.index.IndexReader.CacheKey;
 import org.apache.lucene.index.IndexReader.ClosedListener;
 import org.apache.lucene.store.AlreadyClosedException;
@@ -92,7 +93,7 @@ final class SegmentCoreReaders {
       Collections.synchronizedSet(new LinkedHashSet<IndexReader.ClosedListener>());
 
   SegmentCoreReaders(Directory dir, SegmentCommitInfo si, IOContext context) throws IOException {
-
+    // segment 的codec
     final Codec codec = si.info.getCodec();
     final Directory
         cfsDir; // confusing name: if (cfs) it's the cfsdir, otherwise it's the segment's directory.
@@ -115,6 +116,10 @@ final class SegmentCoreReaders {
       if (coreFieldInfos.hasPostings()) {
         final PostingsFormat format = codec.postingsFormat();
         // Ask codec for its Fields
+        /**
+         * 读取每个field的倒排索引
+         * @see PerFieldPostingsFormat#fieldsProducer(SegmentReadState)
+         */
         fields = format.fieldsProducer(segmentReadState);
         assert fields != null;
       } else {

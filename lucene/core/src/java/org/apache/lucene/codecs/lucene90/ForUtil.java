@@ -27,20 +27,28 @@ import org.apache.lucene.store.DataOutput;
 // If bitsPerValue <= 8 then we pack 8 ints per long
 // else if bitsPerValue <= 16 we pack 4 ints per long
 // else we pack 2 ints per long
+
+/**
+ * frame of reference 实现
+ */
 final class ForUtil {
 
   static final int BLOCK_SIZE = 128;
   private static final int BLOCK_SIZE_LOG2 = 7;
 
   private static long expandMask32(long mask32) {
+    // 使用后32位，填充前32位
     return mask32 | (mask32 << 32);
   }
 
   private static long expandMask16(long mask16) {
+    // 把mask16低16位填充到16到31（16bit）
+    // 在这32位填充到高32位，得到64位
     return expandMask32(mask16 | (mask16 << 16));
   }
 
   private static long expandMask8(long mask8) {
+    // 就是这8位往前填充，得到8个8位-》64位
     return expandMask16(mask8 | (mask8 << 8));
   }
 
@@ -53,6 +61,8 @@ final class ForUtil {
   }
 
   private static long mask8(int bitsPerValue) {
+    // (1L << bitsPerValue) - 1: 低bitsPerValue位全是1
+    // 把低8位填充满这64位
     return expandMask8((1L << bitsPerValue) - 1);
   }
 
@@ -80,8 +90,16 @@ final class ForUtil {
     }
   }
 
+  // 8bit时是压缩
   private static void collapse8(long[] arr) {
+    // 所以把原来的连续顺序的元素分成了8段,即1个long容纳的数，等于需要对这个数组分的段数
+    // 最后变成16个long，所以16次
     for (int i = 0; i < 16; ++i) {
+      // 通过左移得到原来的低8位然后or在一起
+
+      // 新的long的下标代表在原来顺序段（8个连续）的下标（第n个）
+      // 8bit 在新long的下标，是对应段下标
+      // 1维：段中下标 2维：段编号
       arr[i] =
           (arr[i] << 56)
               | (arr[16 + i] << 48)
@@ -95,9 +113,11 @@ final class ForUtil {
   }
 
   private static void expand16(long[] arr) {
+    // 32个long 1个long包含4个数字
     for (int i = 0; i < 32; ++i) {
+      // 当前新范围的4个取原来的低16位
       long l = arr[i];
-      arr[i] = (l >>> 48) & 0xFFFFL;
+      arr[i] = (l >>> 48) & 0xFFFFL;// 保留
       arr[32 + i] = (l >>> 32) & 0xFFFFL;
       arr[64 + i] = (l >>> 16) & 0xFFFFL;
       arr[96 + i] = l & 0xFFFFL;
@@ -113,6 +133,7 @@ final class ForUtil {
   }
 
   private static void collapse16(long[] arr) {
+    // 32个long 1个4数，跟上面8bit的，分为1个long分成4段
     for (int i = 0; i < 32; ++i) {
       arr[i] = (arr[i] << 48) | (arr[32 + i] << 32) | (arr[64 + i] << 16) | arr[96 + i];
     }
@@ -127,6 +148,7 @@ final class ForUtil {
   }
 
   private static void collapse32(long[] arr) {
+    // 2段
     for (int i = 0; i < 64; ++i) {
       arr[i] = (arr[i] << 32) | arr[64 + i];
     }
@@ -137,35 +159,63 @@ final class ForUtil {
   /** Encode 128 integers from {@code longs} into {@code out}. */
   void encode(long[] longs, int bitsPerValue, DataOutput out) throws IOException {
     final int nextPrimitive;
-    final int numLongs;
+    final int  numLongs;// 需要用到的long 数
+    // 8bit以内 使用1byte即可
     if (bitsPerValue <= 8) {
-      nextPrimitive = 8;
-      numLongs = BLOCK_SIZE / 8;
-      collapse8(longs);
+      nextPrimitive = 8; // 固定8bit间隔
+      numLongs = BLOCK_SIZE / 8; // 128个元素要用16个long
+      collapse8(longs); // 把longs处理个8bit间隔
+    // 16以内 2byte
     } else if (bitsPerValue <= 16) {
-      nextPrimitive = 16;
-      numLongs = BLOCK_SIZE / 4;
+      nextPrimitive = 16; // 固定16bit -》2byte
+      numLongs = BLOCK_SIZE / 4; // 要用32个long
       collapse16(longs);
+    // 超过16bit（2byte） ：int32位
     } else {
-      nextPrimitive = 32;
-      numLongs = BLOCK_SIZE / 2;
+      nextPrimitive = 32;// 固定间隔 32 bit -》int
+      numLongs = BLOCK_SIZE / 2; // 64个long
       collapse32(longs);
     }
+    // 把long数组已经转成固定间隔（8、16、32bit）的压缩数组
+    // 固定间隔是作为遍历时使用
+    // 固定间隔 = bitsPerValue(需求bit) + shift(用于组装的bit数)
+    // n个shift = 1个bitsPerValue -》通过n个shift组装1个value
 
-    final int numLongsPerShift = bitsPerValue * 2;
+    // 1个间隔 分布：
+    // 前bitsPerValue位：就是完整数据
+    // 而剩下的shift：用于连同后面几个long的shift一起组装成1个bitsPerValue长度的value
+
+    // 下面进行进一步压缩（shift的放入）
+    final int numLongsPerShift = bitsPerValue * 2;// 2倍的入参固定bit数，即每次
     int idx = 0;
+    // 当前固定bit - 入参固定bit
+    // 距离目标的bit差距shift -》就是一个间隔里放完固定bit后剩下可用的bit数
     int shift = nextPrimitive - bitsPerValue;
     for (int i = 0; i < numLongsPerShift; ++i) {
+      // 等于把每个间隔的value移到间隔的前bitsPerValue
+      // 每个间隔预留的低shift位，准备存放shift数据
       tmp[i] = longs[idx++] << shift;
     }
+
+    // 完成这里，等于把第1段连续long写入到存储long数组（每个都是写在存储的第1个value）
+
+    // 就是只要当前固定间隔剩余bit数 还能继续放入1个value固定长度，就继续，直到不能放下1个完整value
+    // 里面的循环就是放入对应段的完整value
     for (shift = shift - bitsPerValue; shift >= 0; shift -= bitsPerValue) {
+      // 等于往结果long数组放入当前段的value
       for (int i = 0; i < numLongsPerShift; ++i) {
         tmp[i] |= longs[idx++] << shift;
       }
     }
+    // 到这里，就是把第2段开始的能放完整value长度的数据放入存储long数组中
 
-    final int remainingBitsPerLong = shift + bitsPerValue;
+    // 剩下的就是写shift，用于组装成1个value，但存的时候分开
+    // 剩下的long平均分配到这些shift上
+
+    // （1个）存储long 当前还有多少bit未用
+    final int remainingBitsPerLong = shift + bitsPerValue;// 等于还原回shift，因为上面把shift变成负数了
     final long maskRemainingBitsPerLong;
+    // mask：用于就是保留每个间隔中shift数据，格式：间隔中低remainingBitsPerLong全是1
     if (nextPrimitive == 8) {
       maskRemainingBitsPerLong = MASKS8[remainingBitsPerLong];
     } else if (nextPrimitive == 16) {
@@ -175,20 +225,27 @@ final class ForUtil {
     }
 
     int tmpIdx = 0;
+    //
     int remainingBitsPerValue = bitsPerValue;
+    // 遍历剩下的long，不能用1个连续完整value存储的
     while (idx < numLongs) {
       if (remainingBitsPerValue >= remainingBitsPerLong) {
+        // 直接放入完整1个value
+
         remainingBitsPerValue -= remainingBitsPerLong;
+        //
         tmp[tmpIdx++] |= (longs[idx] >>> remainingBitsPerValue) & maskRemainingBitsPerLong;
         if (remainingBitsPerValue == 0) {
           idx++;
           remainingBitsPerValue = bitsPerValue;
         }
       } else {
+        // 当前1个long剩余bit数 >= value固定bit数 -> 剩下还能放1个完整value
+
         final long mask1, mask2;
         if (nextPrimitive == 8) {
-          mask1 = MASKS8[remainingBitsPerValue];
-          mask2 = MASKS8[remainingBitsPerLong - remainingBitsPerValue];
+          mask1 = MASKS8[remainingBitsPerValue]; // 用于得到完整value
+          mask2 = MASKS8[remainingBitsPerLong - remainingBitsPerValue]; // 用于保存shift
         } else if (nextPrimitive == 16) {
           mask1 = MASKS16[remainingBitsPerValue];
           mask2 = MASKS16[remainingBitsPerLong - remainingBitsPerValue];
@@ -196,12 +253,15 @@ final class ForUtil {
           mask1 = MASKS32[remainingBitsPerValue];
           mask2 = MASKS32[remainingBitsPerLong - remainingBitsPerValue];
         }
+        // 加入1个完整value到对应long的段位置
         tmp[tmpIdx] |= (longs[idx++] & mask1) << (remainingBitsPerLong - remainingBitsPerValue);
         remainingBitsPerValue = bitsPerValue - remainingBitsPerLong + remainingBitsPerValue;
+
         tmp[tmpIdx++] |= (longs[idx] >>> remainingBitsPerValue) & mask2;
       }
     }
 
+    // 写入存储long数组
     for (int i = 0; i < numLongsPerShift; ++i) {
       out.writeLong(tmp[i]);
     }
@@ -249,7 +309,9 @@ final class ForUtil {
    * generates SIMD instructions for it in order to shift multiple longs at once.
    */
   private static void shiftLongs(long[] a, int count, long[] b, int bi, int shift, long mask) {
+    // 从bi开始放入count个
     for (int i = 0; i < count; ++i) {
+      //
       b[bi + i] = (a[i] >>> shift) & mask;
     }
   }
@@ -259,13 +321,18 @@ final class ForUtil {
   private static final long[] MASKS32 = new long[32];
 
   static {
+    // 初始化MASK
     for (int i = 0; i < 8; ++i) {
+      // 1:8个0000 0001
+      // 2:8个0000 0010
       MASKS8[i] = mask8(i);
     }
     for (int i = 0; i < 16; ++i) {
+      // 1: 4个0000 0000 0000 0001
       MASKS16[i] = mask16(i);
     }
     for (int i = 0; i < 32; ++i) {
+      // 1: 2个0000 0000 0000 0000 0000 0000 0000 0001
       MASKS32[i] = mask32(i);
     }
   }
@@ -339,6 +406,7 @@ final class ForUtil {
         decode5(in, tmp, longs);
         expand8(longs);
         break;
+        // 固定bit数>shift
       case 6:
         decode6(in, tmp, longs);
         expand8(longs);
@@ -545,17 +613,34 @@ final class ForUtil {
   }
 
   private static void decode3(DataInput in, long[] tmp, long[] longs) throws IOException {
+    // 1个间隔格式：XXXYYYZZ （X：前6个long的3位，Y：第2段6个long的3位，ZZ：剩余的shift）
+
     in.readLongs(tmp, 0, 6);
+    // 右移5位再&mask ，得到每个间隔的准确value（00000XXX）,放到结果数组前6个
+    // 前1到6个，使用间隔前3位存完整value
     shiftLongs(tmp, 6, longs, 0, 5, MASK8_3);
+    // 右移2位再&mask_3 : n个 00000YYY , 放到结果数组的7到12个中
+    // 前7到12，使用间隔中间存完整value，格式：XXXYYY00
     shiftLongs(tmp, 6, longs, 6, 2, MASK8_3);
+
+    // 那么下面就是把shift组装
     for (int iter = 0, tmpIdx = 0, longsIdx = 12; iter < 2; ++iter, tmpIdx += 3, longsIdx += 2) {
+      // 保留第1项的shift（共2位），然后左移1位（XX0），等待or后面的
       long l0 = (tmp[tmpIdx + 0] & MASK8_2) << 1;
+      // 第2项的shift（第1位）加到上面的已有2位上，得到3位
       l0 |= (tmp[tmpIdx + 1] >>> 1) & MASK8_1;
       longs[longsIdx + 0] = l0;
+
+      // 剩下那1bit跟下一个long的shift（2bit）合并
       long l1 = (tmp[tmpIdx + 1] & MASK8_1) << 2;
       l1 |= (tmp[tmpIdx + 2] & MASK8_2) << 0;
       longs[longsIdx + 1] = l1;
     }
+
+    //所以存储文件（long）实际布局规律
+    // 1个long：n个固定大小 + shift -》例如这里3， XXX（固定）YYY（固定）ZZ（shift）
+    // 跟其他结构一样，long第一个value就是第1段，第二个是第二段
+    // 转换时先把所有第1段转换（这个6个long第1个value即结果第1段1到6的），再去转换第二段（6个第2个value即结果第2段7到2），然后再去转换所有shift（剩下的是13后）
   }
 
   private static void decode4(DataInput in, long[] tmp, long[] longs) throws IOException {
@@ -582,13 +667,35 @@ final class ForUtil {
   }
 
   private static void decode6(DataInput in, long[] tmp, long[] longs) throws IOException {
+    // 1个long原始格式：8个XXXXXXYY （X代表用于开始2*bitPerValue转换，Y代表后面组装转换的）
+
+    // 前面这是第1到12个long转换
+    // 先读取2*bitPerValue个long
     in.readLongs(tmp, 0, 12);
+    // 放入前12个（2*bitPerValue个long）到longs（结果数组）
+    // 右移shift（2位）：00XXXXXX YYXX...XXXX -》就是把每8个前6个放到正常位置（低2位准备丢弃）
+    // & mask8_6(8个00111111): 8个00xxxxxx（YY2位都被置为0）-》低2位丢弃
+    // 这样得到long是8个00XXXXXX（每个8bit的前6位都放到正常位置）
     shiftLongs(tmp, 12, longs, 0, 2, MASK8_6);
+
+
+    // 下面是转换出来的13到16个long（组装）
+
+    // tmp 的前12个都更新
+    // tmp的& mask8_2（8个00000011）8个000000xx(保留低2位)
     shiftLongs(tmp, 12, tmp, 0, 0, MASK8_2);
+    // longsIdx从第13个开始，每个+1
+    // 每次都会tmpIdx+3，即每3个前面的long用于后面的1个
+    // 剩下4个long(13-16)，基于前面的每3个long，例如13基于（1、2、3），16基于（10、11、12）
     for (int iter = 0, tmpIdx = 0, longsIdx = 12; iter < 4; ++iter, tmpIdx += 3, longsIdx += 1) {
-      long l0 = tmp[tmpIdx + 0] << 4;
-      l0 |= tmp[tmpIdx + 1] << 2;
-      l0 |= tmp[tmpIdx + 2] << 0;
+      long l0 = tmp[tmpIdx + 0] << 4;// 左移4位-》00xx 000..00XX0000 (固定头2位0)
+      l0 |= tmp[tmpIdx + 1] << 2;// 后一个long 左移2位-》0000XX00..00XX00（固定头4位0）
+      l0 |= tmp[tmpIdx + 2] << 0;// or上后2个long -> 000000xx..000000xx（固定头6位0）
+
+      // OR的结果就是：00XXYYZZ00XXYYZZ..00XXYYZZ (x、y、z分别上面顺数的3个long的元素)
+      // 所以组成了8个00XXYYZZ(刚好6个使用的，符合bitPerValue)
+
+      // 最后or的结果作为最终long
       longs[longsIdx + 0] = l0;
     }
   }

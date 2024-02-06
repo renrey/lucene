@@ -36,7 +36,9 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.UnicodeUtil;
 
-/** A {@link DataOutput} storing data in a list of {@link ByteBuffer}s. */
+/** A {@link DataOutput} storing data in a list of {@link ByteBuffer}s.
+ *
+ * 就是暂时保存字节数组数据的内存池*/
 public final class ByteBuffersDataOutput extends DataOutput implements Accountable {
   private static final ByteBuffer EMPTY = ByteBuffer.allocate(0).order(ByteOrder.LITTLE_ENDIAN);
   ;
@@ -183,22 +185,29 @@ public final class ByteBuffersDataOutput extends DataOutput implements Accountab
 
   @Override
   public void writeByte(byte b) {
+    // 当前使用的block空间不够，新增block
     if (!currentBlock.hasRemaining()) {
+      // 新增block
       appendBlock();
     }
+    // 写入当前使用block
     currentBlock.put(b);
   }
 
   @Override
   public void writeBytes(byte[] src, int offset, int length) {
     assert length >= 0;
+    // 一直遍历写完这个src为止
     while (length > 0) {
+      // 当前block无空间，新增1个block
       if (!currentBlock.hasRemaining()) {
         appendBlock();
       }
 
+      // chunk：能写多少长度到当前block
       int chunk = Math.min(currentBlock.remaining(), length);
-      currentBlock.put(src, offset, chunk);
+      currentBlock.put(src, offset, chunk);// 往当前block写入chunk长度内容
+      // 剩余待写长度、待写开始offset更新
       length -= chunk;
       offset += chunk;
     }
@@ -389,9 +398,12 @@ public final class ByteBuffersDataOutput extends DataOutput implements Accountab
   public void writeString(String v) {
     try {
       final int MAX_CHARS_PER_WINDOW = 1024;
+      // 长度小于=1024
       if (v.length() <= MAX_CHARS_PER_WINDOW) {
         final BytesRef utf8 = new BytesRef(v);
+        // 先写utf8格式下长度
         writeVInt(utf8.length);
+        // 然后写内容
         writeBytes(utf8.bytes, utf8.offset, utf8.length);
       } else {
         writeVInt(UnicodeUtil.calcUTF16toUTF8Length(v, 0, v.length()));

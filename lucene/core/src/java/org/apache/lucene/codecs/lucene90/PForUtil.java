@@ -23,7 +23,10 @@ import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.util.LongHeap;
 import org.apache.lucene.util.packed.PackedInts;
 
-/** Utility class to encode sequences of 128 small positive integers. */
+/** Utility class to encode sequences of 128 small positive integers.
+ * 作用：就是用对128个正数int 的序列进行编码
+ * 实际也是套用for算法
+ * */
 final class PForUtil {
 
   private static final int MAX_EXCEPTIONS = 7;
@@ -39,6 +42,7 @@ final class PForUtil {
   }
 
   static boolean allEqual(long[] l) {
+    // 每个的long值都跟第1个一样
     for (int i = 1; i < ForUtil.BLOCK_SIZE; ++i) {
       if (l[i] != l[0]) {
         return false;
@@ -60,47 +64,70 @@ final class PForUtil {
   /** Encode 128 integers from {@code longs} into {@code out}. */
   void encode(long[] longs, DataOutput out) throws IOException {
     // Determine the top MAX_EXCEPTIONS + 1 values
+    // 生成long数组 （数量=8）
     final LongHeap top = new LongHeap(MAX_EXCEPTIONS + 1);
+    // 等于把入参数组的前8个long放入top数组中(8个刚好不会扩容)
     for (int i = 0; i <= MAX_EXCEPTIONS; ++i) {
       top.push(longs[i]);
     }
-    long topValue = top.top();
+    long topValue = top.top();// 拿回第1个
+    // 从第9个遍历到最后，找到一个最大的，如果比一开始第1个大，则更新到top的第1个位置
     for (int i = MAX_EXCEPTIONS + 1; i < ForUtil.BLOCK_SIZE; ++i) {
+      // 比第1个大，更新到第1个位置（第1个是第1、第9到最后中最大的）
       if (longs[i] > topValue) {
         topValue = top.updateTop(longs[i]);
       }
     }
 
+    // 然后2到8跟第1个，拿到最大
     long max = 0L;
     for (int i = 1; i <= top.size(); ++i) {
       max = Math.max(max, top.get(i));
     }
+    // 所以上面的一堆操作实际就是拿到longs数组中最大数max！！！
 
+    // 查看最大max在PackedInts算法所需要的bit数
+    // 实际是看最高位1的bit下标
     final int maxBitsRequired = PackedInts.bitsRequired(max);
+
     // We store the patch on a byte, so we can't decrease the number of bits required by more than 8
+    // patched所需的bit数
     final int patchedBitsRequired =
         Math.max(PackedInts.bitsRequired(topValue), maxBitsRequired - 8);
     int numExceptions = 0;
-    final long maxUnpatchedValue = (1L << patchedBitsRequired) - 1;
+    final long maxUnpatchedValue = (1L << patchedBitsRequired) - 1;// patchedBitsRequired个1，前面全是0
+    // 从第3个开始到当前top最后（第8个），证明1、2要被使用了
     for (int i = 2; i <= top.size(); ++i) {
+      // 这5个中每有个1个大于maxUnpatchedValue，numExceptions+1
       if (top.get(i) > maxUnpatchedValue) {
         numExceptions++;
       }
     }
+    // 思考下，numExceptions里的Exception应该就是指出现比当前patch大的情况，因为生成只是用topValue跟max所需bit数-8来比，可能topValue比（max所需bit数-8）那个大
+    // 而toptopValue是第1个、第9到最后的最大值
+
+    // numExceptions不超过5
+
+    // exceptions 这个byte数组长度最多不大于10
+    // 看着1个exception元素占了2个byte
     final byte[] exceptions = new byte[numExceptions * 2];
+    // 存在Exception的情况
     if (numExceptions > 0) {
       int exceptionCount = 0;
+      // 遍历longs全部，即128个
       for (int i = 0; i < ForUtil.BLOCK_SIZE; ++i) {
+        // 大于maxUnpatchedValue
         if (longs[i] > maxUnpatchedValue) {
-          exceptions[exceptionCount * 2] = (byte) i;
-          exceptions[exceptionCount * 2 + 1] = (byte) (longs[i] >>> patchedBitsRequired);
-          longs[i] &= maxUnpatchedValue;
+          exceptions[exceptionCount * 2] = (byte) i;// 第1b = longs数组下标
+          exceptions[exceptionCount * 2 + 1] = (byte) (longs[i] >>> patchedBitsRequired); // 第2b= 当前值右移patchedBitsRequired个bit
+          longs[i] &= maxUnpatchedValue;// longs上原值 & maxUnpatchedValue -》只保留后patchedBitsRequired位
           exceptionCount++;
         }
       }
       assert exceptionCount == numExceptions : exceptionCount + " " + numExceptions;
     }
 
+    // allEqual : 全部long值都一样
     if (allEqual(longs) && maxBitsRequired <= 8) {
       for (int i = 0; i < numExceptions; ++i) {
         exceptions[2 * i + 1] =
@@ -109,10 +136,16 @@ final class PForUtil {
       out.writeByte((byte) (numExceptions << 5));
       out.writeVLong(longs[0]);
     } else {
-      final int token = (numExceptions << 5) | patchedBitsRequired;
+      // 应该正常是这里（全部long值相同应该不可能的）
+
+      //
+      final int token = (numExceptions << 5) | patchedBitsRequired; // patchedBitsRequired二进制不超过6bit（111111-63）
       out.writeByte((byte) token);
+      // 参数bitsPerValue：使用 patchedBitsRequired，即patchedBitsRequired是一个value使用固定bit数
       forUtil.encode(longs, patchedBitsRequired, out);
     }
+
+    // 文件流写exceptions
     out.writeBytes(exceptions, exceptions.length);
   }
 

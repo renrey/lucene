@@ -120,6 +120,7 @@ public final class Lucene90BlockTreeTermsReader extends FieldsProducer {
     this.segment = state.segmentInfo.name;
 
     try {
+      // tim
       String termsName =
           IndexFileNames.segmentFileName(segment, state.segmentSuffix, TERMS_EXTENSION);
       termsIn = state.directory.openInput(termsName, state.context);
@@ -144,6 +145,7 @@ public final class Lucene90BlockTreeTermsReader extends FieldsProducer {
           state.segmentInfo.getId(),
           state.segmentSuffix);
 
+      // tmd
       // Read per-field details
       String metaName =
           IndexFileNames.segmentFileName(segment, state.segmentSuffix, TERMS_META_EXTENSION);
@@ -160,6 +162,7 @@ public final class Lucene90BlockTreeTermsReader extends FieldsProducer {
               version,
               state.segmentInfo.getId(),
               state.segmentSuffix);
+          // 实际2种元数据都是使用同一个tmd文件，即存在同一个tmd文件种
           indexMetaIn = termsMetaIn = metaIn;
           postingsReader.init(metaIn, state);
 
@@ -169,24 +172,30 @@ public final class Lucene90BlockTreeTermsReader extends FieldsProducer {
           }
           fieldMap = new HashMap<>((int) (numFields / 0.75f) + 1);
           for (int i = 0; i < numFields; ++i) {
+            // 当前field的id
             final int field = termsMetaIn.readVInt();
+            // 当前field 里 term数量
             final long numTerms = termsMetaIn.readVLong();
             if (numTerms <= 0) {
               throw new CorruptIndexException(
                   "Illegal numTerms for field number: " + field, termsMetaIn);
             }
             final BytesRef rootCode = readBytesRef(termsMetaIn);
+            // field的schema
             final FieldInfo fieldInfo = state.fieldInfos.fieldInfo(field);
             if (fieldInfo == null) {
               throw new CorruptIndexException("invalid field number: " + field, termsMetaIn);
             }
+            // total tf？
             final long sumTotalTermFreq = termsMetaIn.readVLong();
             // when frequencies are omitted, sumDocFreq=sumTotalTermFreq and only one value is
             // written.
+            // 总df
             final long sumDocFreq =
                 fieldInfo.getIndexOptions() == IndexOptions.DOCS
                     ? sumTotalTermFreq
                     : termsMetaIn.readVLong();
+            // doc数
             final int docCount = termsMetaIn.readVInt();
             BytesRef minTerm = readBytesRef(termsMetaIn);
             BytesRef maxTerm = readBytesRef(termsMetaIn);
@@ -206,6 +215,7 @@ public final class Lucene90BlockTreeTermsReader extends FieldsProducer {
                   termsMetaIn);
             }
             final long indexStartFP = indexMetaIn.readVLong();
+            // 放入每个字段的FieldReader
             FieldReader previous =
                 fieldMap.put(
                     fieldInfo.name,
@@ -219,7 +229,7 @@ public final class Lucene90BlockTreeTermsReader extends FieldsProducer {
                         docCount,
                         indexStartFP,
                         indexMetaIn,
-                        indexIn,
+                        indexIn, // tip
                         minTerm,
                         maxTerm));
             if (previous != null) {

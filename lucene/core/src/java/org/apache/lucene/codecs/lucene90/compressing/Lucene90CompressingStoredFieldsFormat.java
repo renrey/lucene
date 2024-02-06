@@ -109,10 +109,12 @@ public class Lucene90CompressingStoredFieldsFormat extends StoredFieldsFormat {
     if (chunkSize < 1) {
       throw new IllegalArgumentException("chunkSize must be >= 1");
     }
+    // bestspeed - 8kb
     this.chunkSize = chunkSize;
     if (maxDocsPerChunk < 1) {
       throw new IllegalArgumentException("maxDocsPerChunk must be >= 1");
     }
+    // Best speed默认1024个
     this.maxDocsPerChunk = maxDocsPerChunk;
     if (blockShift < DirectMonotonicWriter.MIN_BLOCK_SHIFT
         || blockShift > DirectMonotonicWriter.MAX_BLOCK_SHIFT) {

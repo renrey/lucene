@@ -33,7 +33,7 @@ public final class FixedBitSet extends BitSet {
   private static final long BASE_RAM_BYTES_USED =
       RamUsageEstimator.shallowSizeOfInstance(FixedBitSet.class);
 
-  private final long[] bits; // Array of longs holding the bits
+  private final long[] bits; // Array of longs holding the bits，1个long数组，保存这些bit，肯定用最大byte的类型来申请
   private final int numBits; // The number of bits in use
   private final int numWords; // The exact number of longs needed to hold numBits (<= bits.length)
 
@@ -64,6 +64,8 @@ public final class FixedBitSet extends BitSet {
   public static int bits2words(int numBits) {
     // I.e.: get the word-offset of the last bit and add one (make sure to use >> so 0
     // returns 0!)
+    // (numBits - 1)/64 +1
+    // numBits - 1：就是为了后面预留+1，例如64，这个除就是0,    /64: 就是1long=64bit，得到要多少个long  最后+1：就是固定有1个long
     return ((numBits - 1) >> 6) + 1;
   }
 
@@ -189,9 +191,9 @@ public final class FixedBitSet extends BitSet {
   @Override
   public void set(int index) {
     assert index >= 0 && index < numBits : "index=" + index + ", numBits=" + numBits;
-    int wordNum = index >> 6; // div 64
-    long bitmask = 1L << index;
-    bits[wordNum] |= bitmask;
+    int wordNum = index >> 6; // div 64，除64找到long数组下标
+    long bitmask = 1L << index; // 生成对应bit=1的数
+    bits[wordNum] |= bitmask; // or运算等于把对应bit置为1
   }
 
   @Override

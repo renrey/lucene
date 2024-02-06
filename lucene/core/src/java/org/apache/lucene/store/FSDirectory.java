@@ -158,7 +158,11 @@ public abstract class FSDirectory extends BaseDirectory {
 
   /** Just like {@link #open(Path)}, but allows you to also specify a custom {@link LockFactory}. */
   public static FSDirectory open(Path path, LockFactory lockFactory) throws IOException {
+    /**
+     * 关键-底层读取目录文件的方式！！！
+     */
     if (Constants.JRE_IS_64BIT && MMapDirectory.UNMAP_SUPPORTED) {
+      // 64位下，jdk9以上才能用：sun.misc.Unsafe的invokeCleaner方法才有，就是UNMAP_SUPPORTED
       return new MMapDirectory(path, lockFactory);
     } else {
       return new NIOFSDirectory(path, lockFactory);
@@ -217,6 +221,7 @@ public abstract class FSDirectory extends BaseDirectory {
       privateDeleteFile(name, true); // try again to delete it - this is best effort
       pendingDeletes.remove(name); // watch out - if the delete fails it put
     }
+    // 创建封装对象
     return new FSIndexOutput(name);
   }
 

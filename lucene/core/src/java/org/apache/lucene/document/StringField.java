@@ -27,12 +27,15 @@ import org.apache.lucene.util.BytesRef;
 public final class StringField extends Field {
 
   /** Indexed, not tokenized, omits norms, indexes DOCS_ONLY, not stored. */
+  // 定义了2种FieldType：主要是setStored是否true-》是否存储的区别
+
   public static final FieldType TYPE_NOT_STORED = new FieldType();
 
   /** Indexed, not tokenized, omits norms, indexes DOCS_ONLY, stored */
   public static final FieldType TYPE_STORED = new FieldType();
 
   static {
+    // 初始化了2种FieldType
     TYPE_NOT_STORED.setOmitNorms(true);
     TYPE_NOT_STORED.setIndexOptions(IndexOptions.DOCS);
     TYPE_NOT_STORED.setTokenized(false);

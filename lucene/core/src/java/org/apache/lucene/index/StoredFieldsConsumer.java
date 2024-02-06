@@ -20,6 +20,9 @@ package org.apache.lucene.index;
 import java.io.IOException;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.StoredFieldsWriter;
+import org.apache.lucene.codecs.lucene90.Lucene90StoredFieldsFormat;
+import org.apache.lucene.codecs.lucene90.compressing.Lucene90CompressingStoredFieldsFormat;
+import org.apache.lucene.codecs.lucene90.compressing.Lucene90CompressingStoredFieldsWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.Accountable;
@@ -46,6 +49,14 @@ class StoredFieldsConsumer {
     if (writer
         == null) { // TODO can we allocate this in the ctor? we call start document for every doc
       // anyway
+      /**
+       * @see Lucene90StoredFieldsFormat#fieldsWriter(Directory, SegmentInfo, IOContext)
+       *
+       * writer：Lucene90CompressingStoredFieldsWriter
+       * @see Lucene90CompressingStoredFieldsFormat#fieldsWriter(Directory, SegmentInfo, IOContext)
+       *
+       */
+      // 就是使用配置中的codec的storedFieldsFormat创建StoredFieldsWriter
       this.writer = codec.storedFieldsFormat().fieldsWriter(directory, info, IOContext.DEFAULT);
       accountable = writer;
     }
@@ -53,9 +64,12 @@ class StoredFieldsConsumer {
 
   void startDocument(int docID) throws IOException {
     assert lastDoc < docID;
+    // 初始化StoredFieldsWriter（就是没有就创建）
     initStoredFieldsWriter();
-    // lastDoc一直小于目标docID，writer调整到当前id为止
-    while (++lastDoc < docID) {
+    /**
+     * 如果入参docid前面顺数的数字id没有记录，需要预留
+     */
+    while (++lastDoc < docID) {//lastDoc一直小于目标docID，writer调整到当前id为止
       writer.startDocument();
       writer.finishDocument();
     }
@@ -63,6 +77,9 @@ class StoredFieldsConsumer {
   }
 
   void writeField(FieldInfo info, IndexableField field) throws IOException {
+    /**
+     * @see Lucene90CompressingStoredFieldsWriter#writeField(FieldInfo, IndexableField)
+     */
     writer.writeField(info, field);
   }
 

@@ -100,8 +100,9 @@ final class DocumentsWriterPerThreadPool implements Iterable<DocumentsWriterPerT
     // pool is closed
     ensureOpen();
     DocumentsWriterPerThread dwpt = dwptFactory.get();
+    // perThread自身加锁
     dwpt.lock(); // lock so nobody else will get this DWPT
-    dwpts.add(dwpt);
+    dwpts.add(dwpt);// 加入到set里
     return dwpt;
   }
 
@@ -113,9 +114,15 @@ final class DocumentsWriterPerThreadPool implements Iterable<DocumentsWriterPerT
    * operation (add/updateDocument).
    */
   DocumentsWriterPerThread getAndLock() {
+    // 就是获取DocumentsWriterPerThread，并对他加锁
+
+    // sync锁
     synchronized (this) {
       ensureOpen();
+      // 从复用池freelist拿
       DocumentsWriterPerThread dwpt = freeList.poll(DocumentsWriterPerThread::tryLock);
+      // 没有free的，就创建新的DocumentsWriterPerThread
+      // 这里会对perThread加锁
       if (dwpt == null) {
         dwpt = newWriter();
       }

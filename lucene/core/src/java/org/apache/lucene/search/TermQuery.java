@@ -18,16 +18,11 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.Objects;
-import org.apache.lucene.index.IndexReaderContext;
-import org.apache.lucene.index.LeafReader;
-import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.PostingsEnum;
-import org.apache.lucene.index.ReaderUtil;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.TermState;
-import org.apache.lucene.index.TermStates;
-import org.apache.lucene.index.TermsEnum;
+
+import org.apache.lucene.codecs.lucene90.blocktree.FieldReader;
+import org.apache.lucene.index.*;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.util.BytesRef;
 
 /**
  * A Query that matches documents containing a term. This may be combined with other terms with a
@@ -105,12 +100,15 @@ public class TermQuery extends Query {
               + ReaderUtil.getTopLevelContext(context);
       ;
       final TermsEnum termsEnum = getTermsEnum(context);
+      // 就是说当前segment（LeafReaderContext） 没有做这个field的倒排索引（无tip、tim）
       if (termsEnum == null) {
         return null;
       }
       LeafSimScorer scorer =
           new LeafSimScorer(simScorer, context.reader(), term.field(), scoreMode.needsScores());
+      // 一般是这个，除非全量
       if (scoreMode == ScoreMode.TOP_SCORES) {
+        //
         return new TermScorer(this, termsEnum.impacts(PostingsEnum.FREQS), scorer);
       } else {
         return new TermScorer(
@@ -141,7 +139,20 @@ public class TermQuery extends Query {
             : "no termstate found but term exists in reader term=" + term;
         return null;
       }
+      /**
+       * SegmentReader实际使用 , 获取当前segment下这个field的倒排索引reader
+       * @see CodecReader#terms(String)
+       *
+       * @see FieldReader#iterator()
+       */
+      // 获取当前segment下这个field的倒排索引reader
+      // 这个迭代器可以遍历这个segment下这个feild倒排索引的所有term词
       final TermsEnum termsEnum = context.reader().terms(term.field()).iterator();
+      // 检索目标值
+      /**
+       * 对迭起器中term执行检索
+       * @see org.apache.lucene.codecs.blockterms.BlockTermsReader.FieldReader.SegmentTermsEnum#seekExact(BytesRef, TermState)
+       */
       termsEnum.seekExact(term.bytes(), state);
       return termsEnum;
     }
@@ -221,6 +232,7 @@ public class TermQuery extends Query {
   @Override
   public Weight createWeight(IndexSearcher searcher, ScoreMode scoreMode, float boost)
       throws IOException {
+    // 生成1个TermStates
     final IndexReaderContext context = searcher.getTopReaderContext();
     final TermStates termState;
     if (perReaderTermState == null || perReaderTermState.wasBuiltFor(context) == false) {
@@ -230,6 +242,7 @@ public class TermQuery extends Query {
       termState = this.perReaderTermState;
     }
 
+    // 包装成1Weight，主要是termState，其他都是原来入参
     return new TermWeight(searcher, scoreMode, boost, termState);
   }
 

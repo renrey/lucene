@@ -514,6 +514,9 @@ public final class LZ4 {
    * of memory. {@code bytes[dictOff:dictOff+dictLen]} will be used as a dictionary. {@code dictLen}
    * must not be greater than 64kB, the maximum window size.
    *
+   * 压缩byte数组中 dictOff+dictLen 到 dictOff+dictLen+len 的数据到一个最多16kb的内存空间中
+   * dictOff到dictOff+dictLen 会作为字典
+   * dictLen 不能大于64kb，是最大窗口大小
    * <p>{@code ht} shouldn't be shared across threads but can safely be reused.
    */
   public static void compressWithDictionary(

@@ -242,11 +242,13 @@ public abstract class DataOutput {
 
   // write a potentially negative vLong
   private void writeSignedVLong(long i) throws IOException {
+    // 除了低7位外，其他位不是0
     while ((i & ~0x7FL) != 0L) {
-      writeByte((byte) ((i & 0x7FL) | 0x80L));
-      i >>>= 7;
+      writeByte((byte) ((i & 0x7FL) | 0x80L)); // 写入8位：1+当前低7位 （头的1作为标识符号）
+      i >>>= 7;// 等于后7位被弄掉了
     }
-    writeByte((byte) i);
+    // 除了低7位，其他位都没1了
+    writeByte((byte) i);// 直接写入，但不需要头=1
   }
 
   /**

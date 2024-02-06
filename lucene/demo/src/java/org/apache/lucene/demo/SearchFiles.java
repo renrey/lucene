@@ -102,9 +102,9 @@ public class SearchFiles {
       }
     }
 
-    DirectoryReader reader = DirectoryReader.open(FSDirectory.open(Paths.get(index)));
-    IndexSearcher searcher = new IndexSearcher(reader);
-    Analyzer analyzer = new StandardAnalyzer();
+    DirectoryReader reader = DirectoryReader.open(FSDirectory.open(Paths.get(index)));// 目录reader
+    IndexSearcher searcher = new IndexSearcher(reader); // 主类
+    Analyzer analyzer = new StandardAnalyzer(); // 分词器
     KnnVectorDict vectorDict = null;
     if (knnVectors > 0) {
       vectorDict = new KnnVectorDict(reader.directory(), IndexFiles.KNN_DICT);

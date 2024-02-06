@@ -588,12 +588,22 @@ final class IndexingChain implements Accountable {
     // (i.e., we cannot have more than one TokenStream
     // running "at once"):
     termsHash.startDocument();
+    // 就是进行当前docid文档的前置操作
+    // 保证创建了基于codec的StoredFieldsWriter、前置docid预留等
     startStoredFields(docID);
+
+    // 开始对当前doc的属性进行操作
     try {
       // 1st pass over doc fields – verify that doc schema matches the index schema
       // build schema for each unique doc field
+
+      // 第1次遍历每个属性：验证这次doc每个field的schema是否定义的schema
+      // 顺便把对应field的schema拿出来
+      // 遍历当前doc的 每个属性field
       for (IndexableField field : document) {
         IndexableFieldType fieldType = field.fieldType();
+        // 拿到对应field名的PerField
+        // 其实就是内部存个hash表，放field及其PerField，不存在就新增
         PerField pf = getOrAddPerField(field.name(), fieldType);
         if (pf.fieldGen != fieldGen) { // first time we see this field in this document
           fields[fieldCount++] = pf;
@@ -602,15 +612,19 @@ final class IndexingChain implements Accountable {
         }
         if (docFieldIdx >= docFields.length) oversizeDocFields();
         docFields[docFieldIdx++] = pf;
+        /**
+         * 使用fieldType更新到PerField的schema中
+         */
         updateDocFieldSchema(field.name(), pf.schema, fieldType);
       }
       // For each field, if it the first time we see this field in this segment,
       // initialize its FieldInfo.
       // If we have already seen this field, verify that its schema
       // within the current doc matches its schema in the index.
+      // 在当前segment第一次看到这个field，需要去初始化FieldInfo
       for (int i = 0; i < fieldCount; i++) {
         PerField pf = fields[i];
-        if (pf.fieldInfo == null) {
+        if (pf.fieldInfo == null) {// 无FieldInfo，就是没出现过
           initializeFieldInfo(pf);
         } else {
           pf.schema.assertSameSchema(pf.fieldInfo);
@@ -620,9 +634,9 @@ final class IndexingChain implements Accountable {
       // 2nd pass over doc fields – index each field
       // also count the number of unique fields indexed with postings
       docFieldIdx = 0;
+      // 第二次遍历当前doc的 每个属性field：index（写）属性field
       for (IndexableField field : document) {
-        // 处理字段
-        // 计数+1等
+        // 处理当前字段
         if (processField(docID, field, docFields[docFieldIdx])) {
           fields[indexedFieldCount] = docFields[docFieldIdx];
           indexedFieldCount++;
@@ -635,7 +649,9 @@ final class IndexingChain implements Accountable {
         for (int i = 0; i < indexedFieldCount; i++) {
           fields[i].finish(docID);
         }
-        // 保存当前doc字段数
+        /**
+         * 完成写入内存操作，执行flush
+         */
         finishStoredFields();
         // TODO: for broken docs, optimize termsHash.finishDocument
         try {
@@ -731,6 +747,7 @@ final class IndexingChain implements Accountable {
     boolean indexedField = false;
 
     // Invert indexed fields
+    // Invert 已经index的字段 -翻转？
     if (fieldType.indexOptions() != IndexOptions.NONE) {
       if (pf.first) { // first time we see this field in this doc
         pf.invert(docID, field, true);
@@ -742,7 +759,9 @@ final class IndexingChain implements Accountable {
     }
 
     // Add stored fields
+    // 新增field
     if (fieldType.stored()) {
+      // value的String类型,就是验证下长度
       String value = field.stringValue();
       if (value != null && value.length() > IndexWriter.MAX_STORED_STRING_LENGTH) {
         throw new IllegalArgumentException(
@@ -753,6 +772,7 @@ final class IndexingChain implements Accountable {
                 + " characters) to store");
       }
       try {
+        // 写入field -> 转成字节数组格式，写入到内存buffer中
         storedFieldsConsumer.writeField(pf.fieldInfo, field);
       } catch (Throwable th) {
         onAbortingException(th);
@@ -778,14 +798,19 @@ final class IndexingChain implements Accountable {
    * FieldType}, and creates a new {@link PerField} if this field name wasn't seen yet.
    */
   private PerField getOrAddPerField(String fieldName, IndexableFieldType fieldType) {
-    final int hashPos = fieldName.hashCode() & hashMask;
+    final int hashPos = fieldName.hashCode() & hashMask;// hash表的桶寻址
+    /**
+     * 这个hash表实现使用Separate chaining（链表）
+     */
     PerField pf = fieldHash[hashPos];
     while (pf != null && pf.fieldName.equals(fieldName) == false) {
       pf = pf.next;
     }
+    // 没有这个名字的field
     if (pf == null) {
       // first time we encounter field with this name in this segment
-      FieldSchema schema = new FieldSchema(fieldName);
+      FieldSchema schema = new FieldSchema(fieldName);// FieldSchema就是属性名
+      // 1. 创建PerField对象
       pf =
           new PerField(
               fieldName,
@@ -794,10 +819,15 @@ final class IndexingChain implements Accountable {
               indexWriterConfig.getSimilarity(),
               indexWriterConfig.getInfoStream(),
               indexWriterConfig.getAnalyzer());
+
+      //  头插法：插入对应桶的链表
       pf.next = fieldHash[hashPos];
       fieldHash[hashPos] = pf;
+
       totalFieldCount++;
       // At most 50% load factor:
+      // 插入后超过50%
+      // 扩容rehash
       if (totalFieldCount >= fieldHash.length / 2) {
         rehash();
       }
@@ -966,6 +996,8 @@ final class IndexingChain implements Accountable {
 
   /** Called from processDocument to index one field's doc value */
   private void indexDocValue(int docID, PerField fp, DocValuesType dvType, IndexableField field) {
+    // 不同的docvalue类型需要使用不同的DocValuesWriter
+    // DocValuesWriter.addValue
     switch (dvType) {
       case NUMERIC:
         if (field.numericValue() == null) {

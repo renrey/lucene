@@ -26,14 +26,7 @@ import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.NormsProducer;
 import org.apache.lucene.codecs.PostingsWriterBase;
-import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldInfos;
-import org.apache.lucene.index.Fields;
-import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.IndexOptions;
-import org.apache.lucene.index.SegmentWriteState;
-import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.index.*;
 import org.apache.lucene.store.ByteArrayDataOutput;
 import org.apache.lucene.store.ByteBuffersDataOutput;
 import org.apache.lucene.store.DataOutput;
@@ -345,21 +338,36 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
     // if (DEBUG) System.out.println("\nBTTW.write seg=" + segment);
 
     String lastField = null;
+    // 遍历入参fields的字段
     for (String field : fields) {
       assert lastField == null || lastField.compareTo(field) < 0;
       lastField = field;
 
       // if (DEBUG) System.out.println("\nBTTW.write seg=" + segment + " field=" + field);
-      // 这个字段的term
+      // 获取这个字段的terms集合
+      /**
+       * @see FreqProxFields#terms(String)
+       */
       Terms terms = fields.terms(field);
       if (terms == null) {
         continue;
       }
 
+      // 生成这个field 的terms集合迭代器
+      /**
+       * @see FreqProxFields.FreqProxTerms#iterator()
+       */
       TermsEnum termsEnum = terms.iterator();
+      // 基于feildInfo生成TermsWriter
       TermsWriter termsWriter = new TermsWriter(fieldInfos.fieldInfo(field));
+      // 遍历这个field的所有term
       while (true) {
-        BytesRef term = termsEnum.next();
+        // term的格式都是byte数组了
+        /**
+         * @see FreqProxFields.FreqProxTermsEnum#next()
+         * 就是从当前field 的byte数组池中拿到1个term的byte数组
+         */
+        BytesRef term = termsEnum.next();// 就是遍历term了
         // if (DEBUG) System.out.println("BTTW: next term " + term);
 
         if (term == null) {
@@ -368,6 +376,7 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
 
         // if (DEBUG) System.out.println("write field=" + fieldInfo.name + " term=" +
         // brToString(term));
+        // 写入term（byte数组）到termsWriter
         termsWriter.write(term, termsEnum, norms);
       }
 
@@ -1011,6 +1020,7 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
     TermsWriter(FieldInfo fieldInfo) {
       this.fieldInfo = fieldInfo;
       assert fieldInfo.getIndexOptions() != IndexOptions.NONE;
+      // 创建1个位图，数量就是doc数
       docsSeen = new FixedBitSet(maxDoc);
       postingsWriter.setField(fieldInfo);
     }
@@ -1024,8 +1034,11 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
         System.out.println("BTTW: write term=" + brToString(text) + " prefixStarts=" + Arrays.toString(tmp) + " pending.size()=" + pending.size());
       }
       */
-
+      // 往postingsWriter写词
+      // 参数有使用docsSeen位图
       BlockTermState state = postingsWriter.writeTerm(text, termsEnum, docsSeen, norms);
+      // 返回不是空，才会执行下面的
+      // 证明新增的term才会返回对象
       if (state != null) {
 
         assert state.docFreq != 0;
@@ -1034,14 +1047,15 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
             : "postingsWriter=" + postingsWriter;
         pushTerm(text);
 
+        // 写入的term加入到pending中，就是说field里新的term还有其他后置处理
         PendingTerm term = new PendingTerm(text, state);
         pending.add(term);
         // if (DEBUG) System.out.println("    add pending term = " + text + " pending.size()=" +
         // pending.size());
 
-        sumDocFreq += state.docFreq;
-        sumTotalTermFreq += state.totalTermFreq;
-        numTerms++;
+        sumDocFreq += state.docFreq;// 总df+1
+        sumTotalTermFreq += state.totalTermFreq;// 总tf+1
+        numTerms++;// term总数+1
         if (firstPendingTerm == null) {
           firstPendingTerm = term;
         }
@@ -1132,7 +1146,8 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
         writeBytesRef(metaOut, new BytesRef(firstPendingTerm.termBytes));
         writeBytesRef(metaOut, new BytesRef(lastPendingTerm.termBytes));
         metaOut.writeVLong(indexOut.getFilePointer());
-        // Write FST to index
+        // Write FST to index，写入fst到index文件
+        // 写到当前root的fst index中
         root.index.save(metaOut, indexOut);
         // System.out.println("  write FST " + indexStartFP + " field=" + fieldInfo.name);
 
@@ -1179,6 +1194,7 @@ public final class Lucene90BlockTreeTermsWriter extends FieldsConsumer {
       for (ByteBuffersDataOutput fieldMeta : fields) {
         fieldMeta.copyTo(metaOut);
       }
+      // 写各个文件的footer
       CodecUtil.writeFooter(indexOut);
       metaOut.writeLong(indexOut.getFilePointer());
       CodecUtil.writeFooter(termsOut);

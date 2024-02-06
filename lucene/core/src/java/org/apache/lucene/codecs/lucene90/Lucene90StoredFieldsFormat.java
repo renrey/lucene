@@ -151,6 +151,7 @@ public class Lucene90StoredFieldsFormat extends StoredFieldsFormat {
               + ", new="
               + mode.name());
     }
+    // 选择
     return impl(mode).fieldsWriter(directory, si, context);
   }
 

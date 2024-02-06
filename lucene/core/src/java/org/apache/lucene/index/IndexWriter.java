@@ -949,6 +949,9 @@ public class IndexWriter
     boolean success = false;
     try {
       directoryOrig = d;
+      /**
+       * directory：实际就是当前IndexWriter所有文件操作都通过它实现同步加锁,串行执行
+       */
       directory = new LockValidatingDirectoryWrapper(d, writeLock);
       // merge调度器
       mergeScheduler = config.getMergeScheduler();
@@ -1144,7 +1147,7 @@ public class IndexWriter
               segmentInfos.getIndexCreatedVersionMajor(),
               pendingNumDocs,
               enableTestPoints,
-              this::newSegmentName,
+              this::newSegmentName,// segment名
               config,
               directoryOrig,
               directory,
@@ -1547,6 +1550,9 @@ public class IndexWriter
     ensureOpen();
     boolean success = false;
     try {
+      /**
+       * 新增、修改文档都是执行docWriter.updateDocuments，代表在底层每次都是新增doc（不会覆盖旧记录）
+       */
       final long seqNo = maybeProcessEvents(docWriter.updateDocuments(docs, delNode));
       success = true;
       return seqNo;

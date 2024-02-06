@@ -131,8 +131,9 @@ public final class CodecUtil {
       throw new IllegalArgumentException(
           "suffix must be simple ASCII, less than 256 characters in length [got " + suffix + "]");
     }
-    out.writeByte((byte) suffixBytes.length);
-    out.writeBytes(suffixBytes.bytes, suffixBytes.offset, suffixBytes.length);
+    // 写入suffix
+    out.writeByte((byte) suffixBytes.length);// suffix长度
+    out.writeBytes(suffixBytes.bytes, suffixBytes.offset, suffixBytes.length);// suffix内容
   }
 
   /**
@@ -652,6 +653,7 @@ public final class CodecUtil {
 
   /** write int value on header / footer with big endian order */
   public static void writeBEInt(DataOutput out, int i) throws IOException {
+    // 大端存储
     out.writeByte((byte) (i >> 24));
     out.writeByte((byte) (i >> 16));
     out.writeByte((byte) (i >> 8));

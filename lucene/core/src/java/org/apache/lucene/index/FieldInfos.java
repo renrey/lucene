@@ -366,6 +366,7 @@ public class FieldInfos implements Iterable<FieldInfo> {
         verifySameSchema(fi);
       } else { // first time we see this field in this index
         final Integer preferredBoxed = Integer.valueOf(fi.number);
+        // 生成fieldNumber
         if (fi.number != -1 && !numberToName.containsKey(preferredBoxed)) {
           // cool - we can use this number globally
           fieldNumber = preferredBoxed;
@@ -377,6 +378,7 @@ public class FieldInfos implements Iterable<FieldInfo> {
           fieldNumber = lowestUnassignedFieldNumber;
         }
         assert fieldNumber >= 0;
+        // 放入fieldNumber
         numberToName.put(fieldNumber, fieldName);
         nameToNumber.put(fieldName, fieldNumber);
         this.indexOptions.put(fieldName, fi.getIndexOptions());
@@ -673,6 +675,7 @@ public class FieldInfos implements Iterable<FieldInfo> {
       // If the field was seen before then we'll get the same name and number,
       // else we'll allocate a new one
       assert assertNotFinished();
+      // 生成新的fieldNumber
       final int fieldNumber = globalFieldNumbers.addOrGet(fi);
       FieldInfo fiNew =
           new FieldInfo(

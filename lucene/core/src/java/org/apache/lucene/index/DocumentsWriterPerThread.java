@@ -160,7 +160,7 @@ final class DocumentsWriterPerThread implements Accountable {
             directoryOrig,
             Version.LATEST,
             Version.LATEST,
-            segmentName,
+            segmentName,// 外部传入segment文件名
             -1,
             false,
             codec,
@@ -232,6 +232,7 @@ final class DocumentsWriterPerThread implements Accountable {
       final int docsInRamBefore = numDocsInRAM;
       boolean allDocsIndexed = false;
       try {
+        // 循环每条文档doc
         for (Iterable<? extends IndexableField> doc : docs) {
           // Even on exception, the document is still added (but marked
           // deleted), so we don't need to un-reserve at that point.
@@ -241,12 +242,20 @@ final class DocumentsWriterPerThread implements Accountable {
           // vs non-aborting exceptions):
           reserveOneDoc();
           try {
+            // 处理
+            // 1.这个对象记录的numDocsInRAM（doc数）+1 2. 生成这个新的文档的docId -》docid顺序自增
             indexingChain.processDocument(numDocsInRAM++, doc);
           } finally {
+            /**
+             * 每次都会执行onNewDocOnRAM，代表每次都是新增doc
+             * 实际是外层的记录数+1
+             */
             onNewDocOnRAM.run();
           }
         }
         allDocsIndexed = true;
+
+        // 完成？
         return finishDocuments(deleteNode, docsInRamBefore);
       } finally {
         if (!allDocsIndexed && !aborted) {
@@ -273,6 +282,7 @@ final class DocumentsWriterPerThread implements Accountable {
     // succeeded, but apply it only to docs prior to when
     // this batch started:
     long seqNo;
+    // 更新
     if (deleteNode != null) {
       seqNo = deleteQueue.add(deleteNode, deleteSlice);
       assert deleteSlice.isTail(deleteNode) : "expected the delete term as the tail item";

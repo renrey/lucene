@@ -113,6 +113,7 @@ final class Lucene90SkipWriter extends MultiLevelSkipListWriter {
 
   @Override
   public void resetSkip() {
+    // 记录下上1个的各种文件（doc、pos、pay）开始下标
     lastDocFP = docOut.getFilePointer();
     if (fieldHasPositions) {
       lastPosFP = posOut.getFilePointer();

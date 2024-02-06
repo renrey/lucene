@@ -35,6 +35,9 @@ public abstract class BulkScorer {
    *     if they are all allowed to match.
    */
   public void score(LeafCollector collector, Bits acceptDocs) throws IOException {
+    /**
+     * @see Weight.DefaultBulkScorer#score(LeafCollector, Bits, int, int)
+     */
     final int next = score(collector, acceptDocs, 0, DocIdSetIterator.NO_MORE_DOCS);
     assert next == DocIdSetIterator.NO_MORE_DOCS;
   }

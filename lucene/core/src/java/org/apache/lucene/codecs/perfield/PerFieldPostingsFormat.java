@@ -165,7 +165,7 @@ public abstract class PerFieldPostingsFormat extends PostingsFormat {
                   return group.fields.iterator();
                 }
               };
-
+          // 执行底层format的write
           FieldsConsumer consumer = format.fieldsConsumer(group.state);
           toClose.add(consumer);
           consumer.write(maskedFields, norms);
@@ -324,6 +324,7 @@ public abstract class PerFieldPostingsFormat extends PostingsFormat {
               PostingsFormat format = PostingsFormat.forName(formatName);
               String segmentSuffix = getSuffix(formatName, suffix);
               if (!formats.containsKey(segmentSuffix)) {
+                // 通过format创建当前field的PostingsReader创建
                 formats.put(
                     segmentSuffix,
                     format.fieldsProducer(new SegmentReadState(readState, segmentSuffix)));

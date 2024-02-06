@@ -111,6 +111,10 @@ public abstract class CodecReader extends LeafReader {
       // Field does not exist or does not index postings
       return null;
     }
+    /**
+     * 获取PostingsReader: 倒排表
+     * 然后拿到对应字段的FieldReader（已有倒排索引的）
+     */
     return getPostingsReader().terms(field);
   }
 

@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.NormsProducer;
+import org.apache.lucene.codecs.lucene90.blocktree.Lucene90BlockTreeTermsWriter;
+import org.apache.lucene.codecs.perfield.PerFieldPostingsFormat;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.ByteBuffersDataInput;
 import org.apache.lucene.store.ByteBuffersDataOutput;
@@ -92,6 +94,7 @@ final class FreqProxTermsWriter extends TermsHash {
     for (TermsHashPerField f : fieldsToFlush.values()) {
       final FreqProxTermsWriterPerField perField = (FreqProxTermsWriterPerField) f;
       if (perField.getNumTerms() > 0) {
+        // 对当前field里的term进行排序
         perField.sortTerms();
         assert perField.indexOptions != IndexOptions.NONE;
         allFields.add(perField);
@@ -104,8 +107,12 @@ final class FreqProxTermsWriter extends TermsHash {
     }
 
     // Sort by field name
+    // 按照filed做个排序，对FreqProxTermsWriterPerField list
     CollectionUtil.introSort(allFields);
 
+    /**
+     * 把这些field封装到1个Fields对象中，给下面的writers使用！！！
+     */
     Fields fields = new FreqProxFields(allFields);
     applyDeletes(state, fields);
     if (sortMap != null) {
@@ -127,8 +134,19 @@ final class FreqProxTermsWriter extends TermsHash {
     }
 
     // 写入倒排索引
+    /**
+     * @see PerFieldPostingsFormat#fieldsConsumer(SegmentWriteState)
+     * @
+     */
     try (FieldsConsumer consumer =
         state.segmentInfo.getCodec().postingsFormat().fieldsConsumer(state)) {
+      /**
+       * 2层操作
+       * 1.
+       * @see PerFieldPostingsFormat.FieldsWriter#write(Fields, NormsProducer)
+       * 2. 具体文件写入
+       * @see Lucene90BlockTreeTermsWriter#write(Fields, NormsProducer)
+       */
       consumer.write(fields, norms);
     }
   }
