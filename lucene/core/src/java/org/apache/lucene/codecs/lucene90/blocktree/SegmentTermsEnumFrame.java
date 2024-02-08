@@ -148,6 +148,7 @@ final class SegmentTermsEnumFrame {
     // Clone the IndexInput lazily, so that consumers
     // that just pull a TermsEnum to
     // seekExact(TermState) don't pay this cost:
+    // 初始化-- ste里的index文件（tib）内容---》克隆
     ste.initIndexInput();
 
     if (nextEnt != -1) {
@@ -156,10 +157,12 @@ final class SegmentTermsEnumFrame {
     }
     // System.out.println("blc=" + blockLoadCount);
 
-    ste.in.seek(fp);
+    ste.in.seek(fp);// 查找
+    // 读取entCount
     int code = ste.in.readVInt();
-    entCount = code >>> 1;
+    entCount = code >>> 1; // 底1bit有其他作用
     assert entCount > 0;
+    // 底1bit就是判断是否floor的最后，1：是
     isLastInFloor = (code & 1) != 0;
 
     assert arc == null || (isLastInFloor || isFloor)
@@ -170,11 +173,14 @@ final class SegmentTermsEnumFrame {
     // instead of linear scan to find target term; eg
     // we could have simple array of offsets
 
+    // 当前fp就是suffix的开始
     final long startSuffixFP = ste.in.getFilePointer();
     // term suffixes:
-    final long codeL = ste.in.readVLong();
-    isLeafBlock = (codeL & 0x04) != 0;
+    final long codeL = ste.in.readVLong();// 等于读了当前suffix的信息
+    isLeafBlock = (codeL & 0x04) != 0; // 低3位是否=1， 1是叶子block
+    // 当前suffix占用字节数（前5位）
     final int numSuffixBytes = (int) (codeL >>> 3);
+    // 当前使用的临时suffixBytes大小不满足suffix的字节长度，扩容
     if (suffixBytes.length < numSuffixBytes) {
       suffixBytes = new byte[ArrayUtil.oversize(numSuffixBytes, 1)];
     }
@@ -183,6 +189,7 @@ final class SegmentTermsEnumFrame {
     } catch (IllegalArgumentException e) {
       throw new CorruptIndexException(e.getMessage(), ste.in, e);
     }
+    // 放入suffixBytes
     compressionAlg.read(ste.in, suffixBytes, numSuffixBytes);
     suffixesReader.reset(suffixBytes, 0, numSuffixBytes);
 
@@ -291,9 +298,11 @@ final class SegmentTermsEnumFrame {
   // Decodes next entry; returns true if it's a sub-block
   public boolean next() throws IOException {
     if (isLeafBlock) {
+      // 叶子block 更新到下个叶子，然后返回false，代表当前分支没有next了
       nextLeaf();
       return false;
     } else {
+      // 这个就是一直扫描到叶子
       return nextNonLeaf();
     }
   }
@@ -303,11 +312,13 @@ final class SegmentTermsEnumFrame {
     // entCount=" + entCount);
     assert nextEnt != -1 && nextEnt < entCount
         : "nextEnt=" + nextEnt + " entCount=" + entCount + " fp=" + fp;
+    // nextEnt+1
     nextEnt++;
-    suffix = suffixLengthsReader.readVInt();
+    suffix = suffixLengthsReader.readVInt();// 读取下一个suffix的长度
     startBytePos = suffixesReader.getPosition();
     ste.term.setLength(prefix + suffix);
     ste.term.grow(ste.term.length());
+    // 读取数据放入到suffixesReader-》把当前的suffix内容拷贝到suffixesReader中
     suffixesReader.readBytes(ste.term.bytes(), prefix, suffix);
     ste.termExists = true;
   }
@@ -316,10 +327,12 @@ final class SegmentTermsEnumFrame {
     // if (DEBUG) System.out.println("  stef.next ord=" + ord + " nextEnt=" + nextEnt + " entCount="
     // + entCount + " fp=" + suffixesReader.getPosition());
     while (true) {
+      // 需要遍历完
       if (nextEnt == entCount) {
         assert arc == null || (isFloor && isLastInFloor == false)
             : "isFloor=" + isFloor + " isLastInFloor=" + isLastInFloor;
         loadNextFloorBlock();
+        // 终止
         if (isLeafBlock) {
           nextLeaf();
           return false;
@@ -527,6 +540,7 @@ final class SegmentTermsEnumFrame {
 
   // NOTE: sets startBytePos/suffix as a side effect
   public SeekStatus scanToTerm(BytesRef target, boolean exactOnly) throws IOException {
+    // 叶子block跟非叶子block扫描2种
     return isLeafBlock ? scanToTermLeaf(target, exactOnly) : scanToTermNonLeaf(target, exactOnly);
   }
 
@@ -563,6 +577,7 @@ final class SegmentTermsEnumFrame {
     ste.termExists = true;
     subCode = 0;
 
+    // 下个ent下标 == 总数，即已完成遍历，未找到
     if (nextEnt == entCount) {
       if (exactOnly) {
         fillTerm();
@@ -575,10 +590,13 @@ final class SegmentTermsEnumFrame {
     // TODO: binary search when all terms have the same length, which is common for ID fields,
     // which are also the most sensitive to lookup performance?
     // Loop over each entry (term or sub-block) in this block:
+
+    // 遍历当前block的ent
     do {
       nextEnt++;
 
-      suffix = suffixLengthsReader.readVInt();
+      suffix = suffixLengthsReader.readVInt();// 读取suffix后缀长度
+      // suffixLengthsReader保存的是每个suffix的长度，且是每个suffix的长度紧凑一起，给suffixBytes提供找末尾使用
 
       // if (DEBUG) {
       //   BytesRef suffixBytesRef = new BytesRef();
@@ -589,10 +607,19 @@ final class SegmentTermsEnumFrame {
       // + brToString(suffixBytesRef));
       // }
 
+      // 获取当前suffixes 当前指针的下标（即本次suffix的开始下标）
       startBytePos = suffixesReader.getPosition();
-      suffixesReader.skipBytes(suffix);
+      suffixesReader.skipBytes(suffix);// 即直接跳到下个的开始，为下次循环做为准备
+
+      // suffixesReader 则是实际保存suffix的内容
 
       // Loop over bytes in the suffix, comparing to the target
+      /**
+       * 比较的byte数组
+       * suffixBytes [startBytePos : startBytePos + suffix ] (即suffix长度)
+       * target.bytes [prefix: length] (即term的suffix)
+       * 所以实际是比较term的在当前block的prefix下的 suffix（后缀）是否跟 当前prefix的suffix（当前suffixes）是否相同
+       */
       final int cmp =
           Arrays.compareUnsigned(
               suffixBytes,
@@ -601,10 +628,11 @@ final class SegmentTermsEnumFrame {
               target.bytes,
               target.offset + prefix,
               target.offset + target.length);
-
+      // 小于，证明还能继续（排序是按）
       if (cmp < 0) {
         // Current entry is still before the target;
         // keep scanning
+      // 大于，证明不存在，所以返回NOT_FOUND
       } else if (cmp > 0) {
         // Done!  Current entry is after target --
         // return NOT_FOUND:
@@ -622,9 +650,10 @@ final class SegmentTermsEnumFrame {
         assert ste.termExists;
         fillTerm();
         // if (DEBUG) System.out.println("        found!");
+        // 找到了
         return SeekStatus.FOUND;
       }
-    } while (nextEnt < entCount);
+    } while (nextEnt < entCount);// 就是需要遍历完当前block
 
     // It is possible (and OK) that terms index pointed us
     // at this block, but, we scanned the entire block and
@@ -643,6 +672,7 @@ final class SegmentTermsEnumFrame {
     // TODO: not consistent that in the
     // not-exact case we don't next() into the next
     // frame here
+    // 没找到
     return SeekStatus.END;
   }
 
@@ -656,6 +686,7 @@ final class SegmentTermsEnumFrame {
 
     assert nextEnt != -1;
 
+    // 是否已扫描全部
     if (nextEnt == entCount) {
       if (exactOnly) {
         fillTerm();
@@ -667,12 +698,13 @@ final class SegmentTermsEnumFrame {
     assert prefixMatches(target);
 
     // Loop over each entry (term or sub-block) in this block:
+    // 遍历block
     while (nextEnt < entCount) {
 
       nextEnt++;
 
-      final int code = suffixLengthsReader.readVInt();
-      suffix = code >>> 1;
+      final int code = suffixLengthsReader.readVInt();// 读取suffix长度
+      suffix = code >>> 1;// 尾部的1bit有其他用
 
       // if (DEBUG) {
       //  BytesRef suffixBytesRef = new BytesRef();
@@ -683,18 +715,25 @@ final class SegmentTermsEnumFrame {
       // (nextEnt-1) + " (of " + entCount + ") suffix=" + brToString(suffixBytesRef));
       // }
 
+      // 当前遍历到suffix的整个term长度
       final int termLen = prefix + suffix;
-      startBytePos = suffixesReader.getPosition();
-      suffixesReader.skipBytes(suffix);
+      startBytePos = suffixesReader.getPosition();// 拿到当前suffix的开始下标
+      suffixesReader.skipBytes(suffix);//  把下标指针skip到suffix大小，到下个suffix的开始
+      // suffixLengths中底1bit的用途：判断term是否存在
       ste.termExists = (code & 1) == 0;
+
       if (ste.termExists) {
+        // 存在
+        // termBlockOrd 当前block上的顺序+1，subCode=0
         state.termBlockOrd++;
         subCode = 0;
       } else {
+        // suffixLength的下个是subCode
         subCode = suffixLengthsReader.readVLong();
         lastSubFP = fp - subCode;
       }
 
+      // 数组比较：是否suffix一样
       final int cmp =
           Arrays.compareUnsigned(
               suffixBytes,
@@ -704,12 +743,15 @@ final class SegmentTermsEnumFrame {
               target.offset + prefix,
               target.offset + target.length);
 
+      // 小于继续遍历（suffix按照顺序排序）
       if (cmp < 0) {
         // Current entry is still before the target;
         // keep scanning
+      // 大于，不存在
       } else if (cmp > 0) {
         // Done!  Current entry is after target --
         // return NOT_FOUND:
+        // 终止循环，需要把ste更新成当前term（prefix+suffix）
         fillTerm();
 
         // if (DEBUG) System.out.println("        maybe done exactOnly=" + exactOnly + "
@@ -722,9 +764,14 @@ final class SegmentTermsEnumFrame {
           // us to position to the next term after
           // the target, so we must recurse into the
           // sub-frame(s):
+          // 新增frame，并更新成当前frame
           ste.currentFrame = ste.pushFrame(null, ste.currentFrame.lastSubFP, termLen);
+          // 新frame加载block
           ste.currentFrame.loadBlock();
+          // 看当前frame下面还有其他block（如果当前叶子block直接返回false，不会继续）
+          // 就是把当前分支的frame的block都加载进去
           while (ste.currentFrame.next()) {
+            // 下面子block生成frame，并放入stack，然后加载block
             ste.currentFrame = ste.pushFrame(null, ste.currentFrame.lastSubFP, ste.term.length());
             ste.currentFrame.loadBlock();
           }
@@ -740,6 +787,7 @@ final class SegmentTermsEnumFrame {
         // sub-block from the start:
 
         assert ste.termExists;
+        // 终止循环，需要把ste更新成当前term
         fillTerm();
         // if (DEBUG) System.out.println("        found!");
         return SeekStatus.FOUND;
@@ -763,13 +811,16 @@ final class SegmentTermsEnumFrame {
     // TODO: not consistent that in the
     // not-exact case we don't next() into the next
     // frame here
+    // 扫描完没找到
     return SeekStatus.END;
   }
 
   private void fillTerm() {
+    // term长度变使用当前suffix的term完整长度 -》 ste.term变成这个prefix+suffix
     final int termLength = prefix + suffix;
-    ste.term.setLength(termLength);
-    ste.term.grow(termLength);
+    ste.term.setLength(termLength);// 长度设置
+    ste.term.grow(termLength);// byte数组扩容
+    // 把这个prefix+suffix的term 内容（字节数组）拷贝到 ste.term的数组
     System.arraycopy(suffixBytes, startBytePos, ste.term.bytes(), prefix, suffix);
   }
 }

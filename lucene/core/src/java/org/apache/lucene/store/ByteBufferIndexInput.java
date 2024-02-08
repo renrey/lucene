@@ -461,9 +461,11 @@ public abstract class ByteBufferIndexInput extends IndexInput implements RandomA
       throw new AlreadyClosedException("Already closed: " + this);
     }
 
+    // 拷贝到ByteBuffer(java nio)新数组
     final ByteBuffer[] newBuffers = buildSlice(buffers, offset, length);
     final int ofs = (int) (offset & chunkSizeMask);
 
+    // 新的封装对象ByteBufferIndexInput
     final ByteBufferIndexInput clone =
         newCloneInstance(getFullSliceDescription(sliceDescription), newBuffers, ofs, length);
     clone.isClone = true;

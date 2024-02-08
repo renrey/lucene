@@ -436,6 +436,8 @@ public final class FST<T> implements Accountable {
   /**
    * Load a previously saved FST; maxBlockBits allows you to control the size of the byte[] pages
    * used to hold the FST bytes.
+   *
+   * outputs：代表fst输出的一个byte数组序列
    */
   public FST(DataInput metaIn, DataInput in, Outputs<T> outputs, FSTStore fstStore)
       throws IOException {
@@ -465,6 +467,8 @@ public final class FST<T> implements Accountable {
     } else {
       emptyOutput = null;
     }
+
+    // 读取inputType -》 fst中用于表示1个int的byte范围
     final byte t = metaIn.readByte();
     switch (t) {
       case 0:
@@ -479,9 +483,17 @@ public final class FST<T> implements Accountable {
       default:
         throw new CorruptIndexException("invalid input type " + t, in);
     }
+    // startNode-> 开始节点地址
     startNode = metaIn.readVLong();
 
+    // 总byte大小
     long numBytes = metaIn.readVLong();
+
+    // 把当前文件信息初始到fstStore中
+    /**
+     * 一般使用堆外
+     * @see OffHeapFSTStore#init(DataInput, long)
+     */
     this.fstStore.init(in, numBytes);
   }
 
@@ -1022,7 +1034,8 @@ public final class FST<T> implements Accountable {
 
   /** Fills virtual 'start' arc, ie, an empty incoming arc to the FST's start node */
   public Arc<T> getFirstArc(Arc<T> arc) {
-    T NO_OUTPUT = outputs.getNoOutput();
+    // org.apache.lucene.util.fst.ByteSequenceOutputs
+    T NO_OUTPUT = outputs.getNoOutput();// 其实就是拿对应byte数组
 
     if (emptyOutput != null) {
       arc.flags = BIT_FINAL_ARC | BIT_LAST_ARC;
@@ -1034,10 +1047,11 @@ public final class FST<T> implements Accountable {
       arc.flags = BIT_LAST_ARC;
       arc.nextFinalOutput = NO_OUTPUT;
     }
-    arc.output = NO_OUTPUT;
+    arc.output = NO_OUTPUT;// ouput指针更新成NO_OUTPUT
 
     // If there are no nodes, ie, the FST only accepts the
     // empty string, then startNode is 0
+    // arc的target 变成startNode
     arc.target = startNode;
     return arc;
   }
@@ -1527,6 +1541,10 @@ public final class FST<T> implements Accountable {
   /** Returns a {@link BytesReader} for this FST, positioned at position 0. */
   public BytesReader getBytesReader() {
     if (this.fstStore != null) {
+      /**
+       * @see OffHeapFSTStore#getReverseBytesReader()
+       * 返回的ReverseRandomAccessReader
+       */
       return this.fstStore.getReverseBytesReader();
     } else {
       return bytes.getReverseReader();

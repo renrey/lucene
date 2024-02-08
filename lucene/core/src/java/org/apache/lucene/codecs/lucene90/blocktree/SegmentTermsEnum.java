@@ -78,18 +78,25 @@ final class SegmentTermsEnum extends BaseTermsEnum {
     if (fr.index == null) {
       fstReader = null;
     } else {
+      // 拿到对Fst index的reader -> 通过store生产ReverseRandomAccessReader
+      // ReverseRandomAccessReader
       fstReader = fr.index.getBytesReader();
     }
 
     // Init w/ root block; don't use index since it may
     // not (and need not) have been loaded
+    // 初始化arc，此时arcs只有1个
     for (int arcIdx = 0; arcIdx < arcs.length; arcIdx++) {
       arcs[arcIdx] = new FST.Arc<>();
     }
 
+    // 初始currentFrame = staticFrame
     currentFrame = staticFrame;
+
+
     final FST.Arc<BytesRef> arc;
     if (fr.index != null) {
+      // 把index中第1个arc的信息设置到arcs数组中
       arc = fr.index.getFirstArc(arcs[0]);
       // Empty string prefix must have an output in the index!
       assert arc.isFinal();
@@ -204,17 +211,21 @@ final class SegmentTermsEnum extends BaseTermsEnum {
   }
 
   private SegmentTermsEnumFrame getFrame(int ord) throws IOException {
+    // 新增
     if (ord >= stack.length) {
+      //stack 扩容
       final SegmentTermsEnumFrame[] next =
           new SegmentTermsEnumFrame
               [ArrayUtil.oversize(1 + ord, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
       System.arraycopy(stack, 0, next, 0, stack.length);
       for (int stackOrd = stack.length; stackOrd < next.length; stackOrd++) {
+        // 新增的frame初始化
         next[stackOrd] = new SegmentTermsEnumFrame(this, stackOrd);
       }
       stack = next;
     }
     assert stack[ord].ord == ord;
+    // 返回对应的ord的frame
     return stack[ord];
   }
 
@@ -253,7 +264,8 @@ final class SegmentTermsEnum extends BaseTermsEnum {
   // Pushes next'd frame or seek'd frame; we later
   // lazy-load the frame only when needed
   SegmentTermsEnumFrame pushFrame(FST.Arc<BytesRef> arc, long fp, int length) throws IOException {
-    final SegmentTermsEnumFrame f = getFrame(1 + currentFrame.ord);
+    // 新增frame
+    final SegmentTermsEnumFrame f = getFrame(1 + currentFrame.ord);// ord = currentFrame的+1
     f.arc = arc;
     if (f.fpOrig == fp && f.nextEnt != -1) {
       // if (DEBUG) System.out.println("      push reused frame ord=" + f.ord + " fp=" + f.fp + "
@@ -284,7 +296,7 @@ final class SegmentTermsEnum extends BaseTermsEnum {
       // }
     }
 
-    return f;
+    return f;// 返回新的f
   }
 
   // asserts only
@@ -594,6 +606,7 @@ final class SegmentTermsEnum extends BaseTermsEnum {
 
     currentFrame.loadBlock();
 
+    // 在这个frame扫描目标term
     final SeekStatus result = currentFrame.scanToTerm(target, true);
     if (result == SeekStatus.FOUND) {
       // if (DEBUG) {

@@ -273,6 +273,9 @@ public class MMapDirectory extends FSDirectory {
       if (preload) {
         buffer.load();
       }
+      /**
+       * MMAP的ByteBuffer 类型都是MappedByteBuffer
+       */
       buffers[bufNr] = buffer;
       bufferStart += bufSize;
     }

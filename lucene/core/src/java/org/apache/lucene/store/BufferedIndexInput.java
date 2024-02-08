@@ -331,6 +331,7 @@ public abstract class BufferedIndexInput extends IndexInput implements RandomAcc
   public BufferedIndexInput clone() {
     BufferedIndexInput clone = (BufferedIndexInput) super.clone();
 
+    // 新的buffer空间
     clone.buffer = EMPTY_BYTEBUFFER;
     clone.bufferStart = getFilePointer();
 

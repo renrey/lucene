@@ -94,10 +94,14 @@ public final class FieldReader extends Terms {
     // 看注释就是FST是堆外的（off heap）
 
     /**
+     * mmap使用的，里面克隆的还是在DirectByteBuffer（直接内存、堆外）
      * @see ByteBufferIndexInput#clone()
+     *
+     * 实际就是用个新buffer
      * @see NIOFSDirectory.NIOFSIndexInput#clone()
      */
-    // 拷贝index
+    // 拷贝index文件到
+    // 注意：这个是把index文件内容克隆，读取时不是基于原index文件
     final IndexInput clone = indexIn.clone();
     /**
      * @see ByteBufferIndexInput#seek(long)
@@ -107,6 +111,8 @@ public final class FieldReader extends Terms {
 
     /**
      * 创建FST 索引
+     * offheap：使用OffHeapFSTStore 使得FST加载是堆外
+     * FST使用的文件流是克隆index文件的流，不是基于index文件流，所以index文件变动不影响读取
      */
     index = new FST<>(metaIn, clone, ByteSequenceOutputs.getSingleton(), new OffHeapFSTStore());
     /*
@@ -171,6 +177,7 @@ public final class FieldReader extends Terms {
 
   @Override
   public TermsEnum iterator() throws IOException {
+    // 可以看到名字是1个segment下的，即对应segment下当前feild的term集合迭代器
     return new SegmentTermsEnum(this);
   }
 

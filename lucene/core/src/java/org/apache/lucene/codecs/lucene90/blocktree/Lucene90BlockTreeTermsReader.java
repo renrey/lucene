@@ -136,9 +136,9 @@ public final class Lucene90BlockTreeTermsReader extends FieldsProducer {
       String indexName =
           IndexFileNames.segmentFileName(segment, state.segmentSuffix, TERMS_INDEX_EXTENSION);
       /**
-       * jdk9以上
+       * jdk9以上（这个是直接mmap映射）
        * @see MMapDirectory#openInput(String, IOContext)
-       * 以下
+       * 以下（这个是在heap中用buffer数组缓存数据）
        * @see NIOFSDirectory#openInput(String, IOContext)
        */
       indexIn = state.directory.openInput(indexName, state.context);

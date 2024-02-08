@@ -16,6 +16,9 @@
  */
 package org.apache.lucene.index;
 
+import org.apache.lucene.codecs.lucene90.blocktree.SegmentTermsEnum;
+import org.apache.lucene.util.BytesRef;
+
 import java.io.IOException;
 import java.util.Arrays;
 
@@ -97,8 +100,12 @@ public final class TermStates {
     assert context != null && context.isTopLevel;
     final TermStates perReaderTermState = new TermStates(needsStats ? null : term, context);
     if (needsStats) {
+      // 遍历segment
       for (final LeafReaderContext ctx : context.leaves()) {
         // if (DEBUG) System.out.println("  r=" + leaves[i].reader);
+        /**
+         *  加载term!!!
+         */
         TermsEnum termsEnum = loadTermsEnum(ctx, term);
         if (termsEnum != null) {
           final TermState termState = termsEnum.termState();
@@ -112,9 +119,16 @@ public final class TermStates {
   }
 
   private static TermsEnum loadTermsEnum(LeafReaderContext ctx, Term term) throws IOException {
+    // 拿到当前field的FeildReader
+    // Terms 代表多个包含多个term的集合，这里就是代表（当前segment-ctx）1个field下的term
     final Terms terms = ctx.reader().terms(term.field());
     if (terms != null) {
+      // 生成迭代器SegmentTermsEnum
       final TermsEnum termsEnum = terms.iterator();
+      /**
+       * @see SegmentTermsEnum#seekExact(BytesRef)
+       */
+      // 查找当前term的位置
       if (termsEnum.seekExact(term.bytes())) {
         return termsEnum;
       }

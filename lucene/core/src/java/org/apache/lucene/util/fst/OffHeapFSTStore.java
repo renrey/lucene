@@ -40,9 +40,9 @@ public final class OffHeapFSTStore implements FSTStore {
   @Override
   public void init(DataInput in, long numBytes) throws IOException {
     if (in instanceof IndexInput) {
-      this.in = (IndexInput) in;
-      this.numBytes = numBytes;
-      this.offset = this.in.getFilePointer();
+      this.in = (IndexInput) in;// 输入流
+      this.numBytes = numBytes; // fst总字节大小
+      this.offset = this.in.getFilePointer();// 当前文件流的指针
     } else {
       throw new IllegalArgumentException(
           "parameter:in should be an instance of IndexInput for using OffHeapFSTStore, not a "
