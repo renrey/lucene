@@ -264,6 +264,7 @@ public class MMapDirectory extends FSDirectory {
           (int) ((length > (bufferStart + chunkSize)) ? chunkSize : (length - bufferStart));
       MappedByteBuffer buffer;
       try {
+        // mmap
         buffer = fc.map(MapMode.READ_ONLY, offset + bufferStart, bufSize);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
       } catch (IOException ioe) {

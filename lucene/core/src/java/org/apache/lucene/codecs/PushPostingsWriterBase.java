@@ -124,25 +124,31 @@ public abstract class PushPostingsWriterBase extends PostingsWriterBase {
     } else {
       normValues = norms.getNorms(fieldInfo);
     }
-    // term 前置操作
+    // 开始新的term写入
+    /**
+     * @see org.apache.lucene.codecs.lucene90.Lucene90PostingsWriter#startTerm(org.apache.lucene.index.NumericDocValues)
+     */
     startTerm(normValues);
     postingsEnum = termsEnum.postings(postingsEnum, enumFlags);
     assert postingsEnum != null;
 
     int docFreq = 0;
     long totalTermFreq = 0;
+    // 开始term对doc的关系
     // 遍历postingsEnum中doc
     while (true) {
       int docID = postingsEnum.nextDoc();// 拿到的是docId
       if (docID == PostingsEnum.NO_MORE_DOCS) {
         break;
       }
+
+      // 1. 更新当前term的位图中doc
       docFreq++;
       // FixedBitSet位图中更新对应docId的bit为1
       // 即用位图表示当前term在对应doc中出现
       docsSeen.set(docID);
 
-      // 写入当前term在当前doc的tf
+      //2.  写入当前term在当前doc的tf
       int freq;
       if (writeFreqs) {
         // postingsEnum有记录tf
@@ -152,15 +158,23 @@ public abstract class PushPostingsWriterBase extends PostingsWriterBase {
         freq = -1;
       }
       /**
-       * 执行写入tf
        * @see Lucene90PostingsWriter#startDoc(int, int)
+       * 开始这个term跟这个doc的内容
+       *  1. 写入doc的tf到buffer
+       *  2. block内容达到128个，把buffer写入到文件（FOR编码），切换新block
+       *  3. 重置pos
        */
       startDoc(docID, freq);
 
+      // 写pos-》即term在doc具体词下标
       if (writePositions) {
+        // 遍历当前tf，在doc出现多少次自然遍历多少次
         for (int i = 0; i < freq; i++) {
+          // postingsEnum已记录pos了
           int pos = postingsEnum.nextPosition();
           BytesRef payload = writePayloads ? postingsEnum.getPayload() : null;
+
+          // 写入offset-》具体文本下标（跟pos词下标不一样）
           int startOffset;
           int endOffset;
           if (writeOffsets) {
@@ -170,19 +184,28 @@ public abstract class PushPostingsWriterBase extends PostingsWriterBase {
             startOffset = -1;
             endOffset = -1;
           }
+          // 写入pos
           addPosition(pos, payload, startOffset, endOffset);
         }
       }
 
+      /**
+       * @see Lucene90PostingsWriter#finishDoc()
+       * term关于这个doc的完成
+       */
       finishDoc();
     }
 
+    // 如果term的df-》无出现，直接返回null
     if (docFreq == 0) {
       return null;
     } else {
       BlockTermState state = newTermState();
       state.docFreq = docFreq;
-      state.totalTermFreq = writeFreqs ? totalTermFreq : -1;
+      state.totalTermFreq = writeFreqs ? totalTermFreq : -1;// 总tf-》出现了多少次
+      /**
+       * 结束term写入
+       */
       finishTerm(state);
       return state;
     }

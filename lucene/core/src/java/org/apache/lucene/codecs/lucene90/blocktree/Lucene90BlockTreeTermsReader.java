@@ -32,8 +32,7 @@ import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.Terms;
-import org.apache.lucene.store.ChecksumIndexInput;
-import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.store.*;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.fst.ByteSequenceOutputs;
@@ -136,6 +135,12 @@ public final class Lucene90BlockTreeTermsReader extends FieldsProducer {
       // tip索引
       String indexName =
           IndexFileNames.segmentFileName(segment, state.segmentSuffix, TERMS_INDEX_EXTENSION);
+      /**
+       * jdk9以上
+       * @see MMapDirectory#openInput(String, IOContext)
+       * 以下
+       * @see NIOFSDirectory#openInput(String, IOContext)
+       */
       indexIn = state.directory.openInput(indexName, state.context);
       CodecUtil.checkIndexHeader(
           indexIn,

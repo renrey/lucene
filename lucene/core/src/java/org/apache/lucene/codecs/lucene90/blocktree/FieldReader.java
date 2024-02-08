@@ -22,7 +22,9 @@ import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.ByteArrayDataInput;
+import org.apache.lucene.store.ByteBufferIndexInput;
 import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.store.NIOFSDirectory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.fst.ByteSequenceOutputs;
@@ -81,12 +83,31 @@ public final class FieldReader extends Terms {
     //   System.out.println("BTTR: seg=" + segment + " field=" + fieldInfo.name + " rootBlockCode="
     // + rootCode + " divisor=" + indexDivisor);
     // }
+
+    // root block 的位置FP
     rootBlockFP =
         (new ByteArrayDataInput(rootCode.bytes, rootCode.offset, rootCode.length)).readVLong()
             >>> Lucene90BlockTreeTermsReader.OUTPUT_FLAGS_NUM_BITS;
+    // rootCode 存的就是文件下标, 这个64位 右移2位即可
+
     // Initialize FST always off-heap.
+    // 看注释就是FST是堆外的（off heap）
+
+    /**
+     * @see ByteBufferIndexInput#clone()
+     * @see NIOFSDirectory.NIOFSIndexInput#clone()
+     */
+    // 拷贝index
     final IndexInput clone = indexIn.clone();
-    clone.seek(indexStartFP);
+    /**
+     * @see ByteBufferIndexInput#seek(long)
+     */
+    clone.seek(indexStartFP);// 下标到indexStartFP
+
+
+    /**
+     * 创建FST 索引
+     */
     index = new FST<>(metaIn, clone, ByteSequenceOutputs.getSingleton(), new OffHeapFSTStore());
     /*
      if (false) {

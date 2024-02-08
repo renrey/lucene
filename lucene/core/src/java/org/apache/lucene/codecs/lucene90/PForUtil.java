@@ -142,8 +142,10 @@ final class PForUtil {
       final int token = (numExceptions << 5) | patchedBitsRequired; // patchedBitsRequired二进制不超过6bit（111111-63）
       out.writeByte((byte) token);
       // 参数bitsPerValue：使用 patchedBitsRequired，即patchedBitsRequired是一个value使用固定bit数
+      // 使用for算法写入128个int
       forUtil.encode(longs, patchedBitsRequired, out);
     }
+    // 到这里已写入int数字数据
 
     // 文件流写exceptions
     out.writeBytes(exceptions, exceptions.length);

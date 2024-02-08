@@ -502,8 +502,10 @@ public abstract class ByteBufferIndexInput extends IndexInput implements RandomA
     final int endIndex = (int) (sliceEnd >>> chunkSizePower);
 
     // we always allocate one more slice, the last one may be a 0 byte one
+    // 申请blob
     final ByteBuffer[] slices = new ByteBuffer[endIndex - startIndex + 1];
 
+    // 拷贝新的slices数组中
     for (int i = 0; i < slices.length; i++) {
       slices[i] = buffers[startIndex + i].duplicate().order(ByteOrder.LITTLE_ENDIAN);
     }

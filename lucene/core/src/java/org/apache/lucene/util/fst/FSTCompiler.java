@@ -31,7 +31,9 @@ import org.apache.lucene.util.fst.FST.INPUT_TYPE; // javadoc
  * outputs. The FST becomes an FSA if you use NoOutputs. The FST is written on-the-fly into a
  * compact serialized format byte array, which can be saved to / loaded from a Directory or used
  * directly for traversal. The FST is always finite (no cycles).
- *
+ * 从预先排序的术语和输出构建一个最小的有限状态传递器（FST）的过程如下：该FST将一个IntsRef术语映射到任意输出。
+ * 如果使用NoOutputs，该FST将变为有限状态自动机（FSA）。
+ * FST会即时写入一个紧凑的序列化格式的字节数组中，可以将其保存到/加载自目录，或直接用于遍历。FST始终是有限的（无循环）
  * <p>NOTE: The algorithm is described at
  * http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.24.3698
  *

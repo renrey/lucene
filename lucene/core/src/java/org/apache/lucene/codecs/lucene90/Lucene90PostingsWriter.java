@@ -249,7 +249,7 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
     docBufferUpto++;// 当前block的doc数+1
     docCount++;// doc总数+1？
 
-    // 当前block的doc达到上限
+    // 当前block的doc达到上限, 把所有这个block的buffer 内容进行写入文件（文件内容格式转换）
     if (docBufferUpto == BLOCK_SIZE) {
       /**
        * packed_block实现：
@@ -265,7 +265,11 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
       // the block was filled so it can save skip data)
     }
 
+    // 重置最新bloc指针k
     lastDocID = docID;
+    /**
+     * 重置last lastPosition、lastStartOffset -> 新的doc
+     */
     lastPosition = 0;
     lastStartOffset = 0;
 
@@ -303,6 +307,11 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
     if (position < 0) {
       throw new CorruptIndexException("position=" + position + " is < 0", docOut);
     }
+    /**
+     * 写入本次posDelta
+     * 在当前doc第1个pos：具体pos，因为lastPosition=0
+     *非第1个pos：是与前一个pos具体值的差距
+     */
     posDeltaBuffer[posBufferUpto] = position - lastPosition;
     if (writePayloads) {
       if (payload == null || payload.length == 0) {
@@ -327,9 +336,12 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
       lastStartOffset = startOffset;
     }
 
-    posBufferUpto++;
+    posBufferUpto++; // posBuffer中的数量 +1
+    // 更新last position -> 用于同个doc的posDelta
     lastPosition = position;
+    // 也是达到block大小后，写入block
     if (posBufferUpto == BLOCK_SIZE) {
+      // pos写入，使用for编码
       pforUtil.encode(posDeltaBuffer, posOut);
 
       if (writePayloads) {
@@ -381,20 +393,33 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
     // docFreq == 1, don't write the single docid/freq to a separate file along with a pointer to
     // it.
     final int singletonDocID;
+    // 只出现在1个doc
     if (state.docFreq == 1) {
       // pulse the singleton docid into the term dictionary, freq is implicitly totalTermFreq
       singletonDocID = (int) docDeltaBuffer[0];
     } else {
       singletonDocID = -1;
       // vInt encode the remaining doc deltas and freqs:
+      /**
+       * 把docbuffer（不够128个）剩下的以vint的格式写入doc文件
+       * 写docDelta跟tf
+       */
       for (int i = 0; i < docBufferUpto; i++) {
         final int docDelta = (int) docDeltaBuffer[i];
         final int freq = (int) freqBuffer[i];
+        /**
+         * 可以看到vint中是1个doc的docDelta跟tf 在一起
+         * 而不是packed那样2种数据分别聚合一起
+         */
         if (!writeFreqs) {
+          // 只写docDelta
           docOut.writeVInt(docDelta);
         } else if (freq == 1) {
           docOut.writeVInt((docDelta << 1) | 1);
         } else {
+          // 正常
+
+          // 即正常下使用中间0作为docDelta跟freq中间分离
           docOut.writeVInt(docDelta << 1);
           docOut.writeVInt(freq);
         }
@@ -403,6 +428,9 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
 
     final long lastPosBlockOffset;
 
+    /**
+     * pos 以varint方式
+     */
     if (writePositions) {
       // totalTermFreq is just total number of positions(or payloads, or offsets)
       // associated with current term.
@@ -423,8 +451,10 @@ public final class Lucene90PostingsWriter extends PushPostingsWriterBase {
         int lastPayloadLength = -1; // force first payload length to be written
         int lastOffsetLength = -1; // force first offset length to be written
         int payloadBytesReadUpto = 0;
+        // 遍历剩下的buffer
         for (int i = 0; i < posBufferUpto; i++) {
           final int posDelta = (int) posDeltaBuffer[i];
+          // 需要写payload到pos文件
           if (writePayloads) {
             final int payloadLength = (int) payloadLengthBuffer[i];
             if (payloadLength != lastPayloadLength) {
