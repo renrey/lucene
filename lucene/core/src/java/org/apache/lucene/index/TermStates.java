@@ -16,6 +16,7 @@
  */
 package org.apache.lucene.index;
 
+import org.apache.lucene.codecs.lucene90.blocktree.FieldReader;
 import org.apache.lucene.codecs.lucene90.blocktree.SegmentTermsEnum;
 import org.apache.lucene.util.BytesRef;
 
@@ -124,6 +125,9 @@ public final class TermStates {
     final Terms terms = ctx.reader().terms(term.field());
     if (terms != null) {
       // 生成迭代器SegmentTermsEnum
+      /**
+       * @see FieldReader#iterator()
+       */
       final TermsEnum termsEnum = terms.iterator();
       /**
        * @see SegmentTermsEnum#seekExact(BytesRef)

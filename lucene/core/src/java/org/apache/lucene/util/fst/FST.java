@@ -84,13 +84,16 @@ public final class FST<T> implements Accountable {
 
   private static final int BIT_ARC_HAS_FINAL_OUTPUT = 1 << 5;
 
-  /** Value of the arc flags to declare a node with fixed length arcs designed for binary search. */
+  /** Value of the arc flags to declare a node with fixed length arcs designed for binary search.
+   * 节点有固定长度的arc，这些arc用于二分查找
+   * */
   // We use this as a marker because this one flag is illegal by itself.
   public static final byte ARCS_FOR_BINARY_SEARCH = BIT_ARC_HAS_FINAL_OUTPUT;
 
   /**
    * Value of the arc flags to declare a node with fixed length arcs and bit table designed for
    * direct addressing.
+   * 表明当前node：有固定长度的arc 且有bit table用于直接寻址
    */
   static final byte ARCS_FOR_DIRECT_ADDRESSING = 1 << 6;
 
@@ -1318,14 +1321,16 @@ public final class FST<T> implements Accountable {
     // assert !flag(arc.flags, BIT_LAST_ARC);
 
     switch (arc.nodeFlags()) {
+      // 二分查找
       case ARCS_FOR_BINARY_SEARCH:
         assert arc.bytesPerArc() > 0;
-        arc.arcIdx++;
+        arc.arcIdx++; //arcIdx+1
         assert arc.arcIdx() >= 0 && arc.arcIdx() < arc.numArcs();
-        in.setPosition(arc.posArcsStart() - arc.arcIdx() * arc.bytesPerArc());
-        arc.flags = in.readByte();
+        in.setPosition(arc.posArcsStart() - arc.arcIdx() * arc.bytesPerArc()); // 移动index中arcIdx的位置
+        arc.flags = in.readByte();// 此时arc更新flags为index这个位置的byte-》即arc的flags
         break;
 
+        // bittable
       case ARCS_FOR_DIRECT_ADDRESSING:
         assert BitTable.assertIsValid(arc, in);
         assert arc.arcIdx() == -1 || BitTable.isBitSet(arc.arcIdx(), arc, in);
@@ -1338,6 +1343,9 @@ public final class FST<T> implements Accountable {
         in.setPosition(arc.nextArc());
         arc.flags = in.readByte();
     }
+
+    // 上面是把文件流读取位置更新，读取第1b得到arc的flags
+    // 读取当前arcIdx的 index文件的arc信息到arc对象
     return readArc(arc, in);
   }
 
@@ -1347,35 +1355,51 @@ public final class FST<T> implements Accountable {
    * positioned just after the arc flags byte.
    */
   private Arc<T> readArc(Arc<T> arc, BytesReader in) throws IOException {
+    // 第1b 是flags
+
     if (arc.nodeFlags() == ARCS_FOR_DIRECT_ADDRESSING) {
       arc.label = arc.firstLabel() + arc.arcIdx();
     } else {
+      // （flags后）n个byte作为label
       arc.label = readLabel(in);
     }
 
+    // output读取
     if (arc.flag(BIT_ARC_HAS_OUTPUT)) {
+      // flags中表明有output
+
+      // label后读取 output 内容
       arc.output = outputs.read(in);
     } else {
       arc.output = outputs.getNoOutput();
     }
 
+    // finaloutput读取
     if (arc.flag(BIT_ARC_HAS_FINAL_OUTPUT)) {
       arc.nextFinalOutput = outputs.readFinalOutput(in);
     } else {
       arc.nextFinalOutput = outputs.getNoOutput();
     }
 
+    // stop的node
     if (arc.flag(BIT_STOP_NODE)) {
+
+      // 就是BIT_STOP_NODE下target，使用flag，而不是另外long存
+      // target
       if (arc.flag(BIT_FINAL_ARC)) {
         arc.target = FINAL_END_NODE;
       } else {
         arc.target = NON_FINAL_END_NODE;
       }
+      // index接下来的内容是nextArc
       arc.nextArc = in.getPosition(); // Only useful for list.
+   // next节点
     } else if (arc.flag(BIT_TARGET_NEXT)) {
+      // 先是保存nextArc的位置
       arc.nextArc = in.getPosition(); // Only useful for list.
       // TODO: would be nice to make this lazy -- maybe
       // caller doesn't need the target and is scanning arcs...
+
       if (!arc.flag(BIT_LAST_ARC)) {
         if (arc.bytesPerArc() == 0) {
           // must scan
@@ -1388,9 +1412,17 @@ public final class FST<T> implements Accountable {
           in.setPosition(arc.posArcsStart() - arc.bytesPerArc() * numArcs);
         }
       }
+
+      // index接下来的内容是nextArc
+      // 非BIT_LAST_ARC时，跟nextArc一样
+      // BIT_LAST_ARC时，则扫描到下一个
       arc.target = in.getPosition();
     } else {
+      // 即上面2种flag都没
+
+      // 这个就是long，属于未压缩的格式target
       arc.target = readUnpackedNodeTarget(in);
+      // index接下来的内容是nextArc
       arc.nextArc = in.getPosition(); // Only useful for list.
     }
     return arc;
@@ -1423,6 +1455,7 @@ public final class FST<T> implements Accountable {
   public Arc<T> findTargetArc(int labelToMatch, Arc<T> follow, Arc<T> arc, BytesReader in)
       throws IOException {
 
+    // 最终标志
     if (labelToMatch == END_LABEL) {
       if (follow.isFinal()) {
         if (follow.target() <= 0) {
@@ -1441,16 +1474,23 @@ public final class FST<T> implements Accountable {
       }
     }
 
+    // follow（arc）中没有target
     if (!targetHasArcs(follow)) {
       return null;
     }
 
+    // indexreader 位置更新成follow当前的target
     in.setPosition(follow.target());
 
     // System.out.println("fta label=" + (char) labelToMatch);
 
+    // arc.nodeFlags获取
+    // 就是index对应target位置的第1个b
     byte flags = arc.nodeFlags = in.readByte();
+
     if (flags == ARCS_FOR_DIRECT_ADDRESSING) {
+      // 当前node有bit table可用于直接寻址
+
       arc.numArcs = in.readVInt(); // This is in fact the label range.
       arc.bytesPerArc = in.readVInt();
       readPresenceBytes(arc, in);
@@ -1465,33 +1505,46 @@ public final class FST<T> implements Accountable {
       }
       return readArcByDirectAddressing(arc, in, arcIndex);
     } else if (flags == ARCS_FOR_BINARY_SEARCH) {
-      arc.numArcs = in.readVInt();
-      arc.bytesPerArc = in.readVInt();
-      arc.posArcsStart = in.getPosition();
+      // 当前node的arc用于二分查询
+
+      arc.numArcs = in.readVInt(); // 1个int是arc数量
+      arc.bytesPerArc = in.readVInt();// 再1个int是 每个arc的对那个字节数
+      arc.posArcsStart = in.getPosition();// header(1b+2int)后，就是arc内容开始
 
       // Array is sparse; do binary search:
       int low = 0;
-      int high = arc.numArcs() - 1;
+      int high = arc.numArcs() - 1; // 通过numArcs得到尾部下标
+
+      // 二分查找
       while (low <= high) {
         // System.out.println("    cycle");
-        int mid = (low + high) >>> 1;
+        int mid = (low + high) >>> 1;// 高低相加/2得到mid
         // +1 to skip over flags
         in.setPosition(arc.posArcsStart() - (arc.bytesPerArc() * mid + 1));
+
+        // 读取中间label内容byte
         int midLabel = readLabel(in);
+        // 比较中间label与当前label
         final int cmp = midLabel - labelToMatch;
+
         if (cmp < 0) {
           low = mid + 1;
         } else if (cmp > 0) {
           high = mid - 1;
         } else {
+          // label相同
+
+          // arc的arcIdx更新
           arc.arcIdx = mid - 1;
           // System.out.println("    found!");
           return readNextRealArc(arc, in);
         }
       }
+      // 没找到相同label，返回null
       return null;
     }
 
+    // 线性扫描
     // Linear scan
     readFirstRealTargetArc(follow.target(), arc, in);
 

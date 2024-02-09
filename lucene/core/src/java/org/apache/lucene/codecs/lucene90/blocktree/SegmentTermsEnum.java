@@ -339,6 +339,7 @@ final class SegmentTermsEnum extends BaseTermsEnum {
       throw new IllegalStateException("terms index was not loaded");
     }
 
+    // 直接通过min、max判断是否在当前segment中
     if (fr.size() > 0 && (target.compareTo(fr.getMin()) < 0 || target.compareTo(fr.getMax()) > 0)) {
       return false;
     }
@@ -359,7 +360,7 @@ final class SegmentTermsEnum extends BaseTermsEnum {
     BytesRef output;
 
     targetBeforeCurrentLength = currentFrame.ord;
-
+    // 不是第一个frame
     if (currentFrame != staticFrame) {
 
       // We are already seek'd; find the common
@@ -378,9 +379,11 @@ final class SegmentTermsEnum extends BaseTermsEnum {
       output = arc.output();
       targetUpto = 0;
 
-      SegmentTermsEnumFrame lastFrame = stack[0];
+      SegmentTermsEnumFrame lastFrame = stack[0];// 拿到第1个frame
       assert validIndexPrefix <= term.length();
 
+      // validIndexPrefix与当前目标term最小长度
+      // 其实用于比较term的前缀的最大上限
       final int targetLimit = Math.min(target.length, validIndexPrefix);
 
       int cmp = 0;
@@ -389,7 +392,9 @@ final class SegmentTermsEnum extends BaseTermsEnum {
       // prefix output sharing
 
       // First compare up to valid seek frames:
-      while (targetUpto < targetLimit) {
+      // 1个个byte比较
+      while (targetUpto < targetLimit) { // 其实就是比较前缀
+        // 比较当前targetUpto位置的byte
         cmp = (term.byteAt(targetUpto) & 0xFF) - (target.bytes[target.offset + targetUpto] & 0xFF);
         // if (DEBUG) {
         //    System.out.println("    cycle targetUpto=" + targetUpto + " (vs limit=" + targetLimit
@@ -397,24 +402,34 @@ final class SegmentTermsEnum extends BaseTermsEnum {
         // " vs termLabel=" + (char) (term.bytes[targetUpto]) + ")"   + " arc.output=" + arc.output
         // + " output=" + output);
         // }
+        //
+        // targetUpto位置的byte不同，终止循环-》到当前位置，不是相同前缀
         if (cmp != 0) {
           break;
         }
+
+        // 到targetUpto位置相同，即有相同前缀！！！
+
+        // arc指向1 + targetUpto位置的
         arc = arcs[1 + targetUpto];
         assert arc.label() == (target.bytes[target.offset + targetUpto] & 0xFF)
             : "arc.label="
                 + (char) arc.label()
                 + " targetLabel="
                 + (char) (target.bytes[target.offset + targetUpto] & 0xFF);
+        // output、lastFrame更新
+        //
         if (arc.output() != Lucene90BlockTreeTermsReader.NO_OUTPUT) {
           output = Lucene90BlockTreeTermsReader.FST_OUTPUTS.add(output, arc.output());
         }
         if (arc.isFinal()) {
           lastFrame = stack[1 + lastFrame.ord];
         }
-        targetUpto++;
+        targetUpto++;// targetUpto+1-》进入比较下1个byte
       }
+      // 注意这里：这里是已跳出比较term前缀循环
 
+      // 这个代表前缀是targetLimit长度（全部都相同）
       if (cmp == 0) {
         final int targetUptoMid = targetUpto;
 
@@ -422,8 +437,13 @@ final class SegmentTermsEnum extends BaseTermsEnum {
         // don't save arc/output/frame; we only do this
         // to find out if the target term is before,
         // equal or after the current term
+        // 第2次比的是目标term跟当前term的后续剩余部分（从相同的前缀的后面-》targetUpto开始）
+        // 但不会保存到arc/output/frame中
+        // 只是为了看target是大于、等于、小于当前term
+
+        // 下面比的是目标跟term的前缀
         final int targetLimit2 = Math.min(target.length, term.length());
-        while (targetUpto < targetLimit2) {
+        while (targetUpto < targetLimit2) {// 比的就是targetUpto开始的内容（即相同前缀后的）
           cmp =
               (term.byteAt(targetUpto) & 0xFF) - (target.bytes[target.offset + targetUpto] & 0xFF);
           // if (DEBUG) {
@@ -436,13 +456,14 @@ final class SegmentTermsEnum extends BaseTermsEnum {
           }
           targetUpto++;
         }
-
+        // 没进行比较（targetUpto是其中1个的长度），就是比较词长度
         if (cmp == 0) {
-          cmp = term.length() - target.length;
+          cmp = term.length() - target.length;// 用当前term来减，所以是看target比term大小（1：target小 0：target大）
         }
         targetUpto = targetUptoMid;
       }
 
+      // taregt比term大-》在term后面
       if (cmp < 0) {
         // Common case: target term is after current
         // term, ie, app is seeking multiple terms
@@ -451,23 +472,31 @@ final class SegmentTermsEnum extends BaseTermsEnum {
         //   System.out.println("  target is after current (shares prefixLen=" + targetUpto + ");
         // frame.ord=" + lastFrame.ord);
         // }
+        // 所以 currentFrame指向最后
         currentFrame = lastFrame;
-
+        // 后面 ——》使用lastFrame
       } else if (cmp > 0) {
+        // target比term小-》在term前面
+
         // Uncommon case: target term
         // is before current term; this means we can
         // keep the currentFrame but we must rewind it
         // (so we scan from the start)
-        targetBeforeCurrentLength = lastFrame.ord;
+        targetBeforeCurrentLength = lastFrame.ord; // 记录下顺序
         // if (DEBUG) {
         //   System.out.println("  target is before current (shares prefixLen=" + targetUpto + ");
         // rewind frame ord=" + lastFrame.ord);
         // }
-        currentFrame = lastFrame;
-        currentFrame.rewind();
+        currentFrame = lastFrame; // 更新指向last
+        currentFrame.rewind(); // 指向开头
+
+        // 前面 ——》使用lastFrame，且lastFrame内部指针指向头
+        // 感觉都是lastFrame操作
       } else {
+        // 相等-》即term跟target是同1个
         // Target is exactly the same as current term
         assert term.length() == target.length;
+        // term存在直接返回true！！！
         if (termExists) {
           // if (DEBUG) {
           //   System.out.println("  target is same as current; return true");
@@ -484,9 +513,11 @@ final class SegmentTermsEnum extends BaseTermsEnum {
       }
 
     } else {
+      // currentFrame 是staticFrame（第1次）
 
+      // 看着下面都是构建时的staticFrame初始化1样
       targetBeforeCurrentLength = -1;
-      arc = fr.index.getFirstArc(arcs[0]);
+      arc = fr.index.getFirstArc(arcs[0]);//
 
       // Empty string prefix must have an output (block) in the index!
       assert arc.isFinal();
@@ -515,10 +546,15 @@ final class SegmentTermsEnum extends BaseTermsEnum {
 
     // We are done sharing the common prefix with the incoming target and where we are currently
     // seek'd; now continue walking the index:
+    // 目前得到的前缀不是整个target, 所以targetUpto< target长度
     while (targetUpto < target.length) {
 
+      // 此时targetUpto 位置是作为label
       final int targetLabel = target.bytes[target.offset + targetUpto] & 0xFF;
 
+      // 通过label 找arc (label所在的arc)
+      // 1. 新增arc ，ord=1 + targetUpto
+      // 2. 查找label所在arc， 且把这个arc在index文件的内容读取到 新建arc对象(ord=1 + targetUpto)
       final FST.Arc<BytesRef> nextArc =
           fr.index.findTargetArc(targetLabel, arc, getArc(1 + targetUpto), fstReader);
 

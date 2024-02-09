@@ -247,7 +247,7 @@ final class SegmentTermsEnumFrame {
     // }
   }
 
-  void rewind() {
+  void /**/rewind() {
 
     // Force reload:
     fp = fpOrig;
