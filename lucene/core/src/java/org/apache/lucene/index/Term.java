@@ -38,8 +38,8 @@ public final class Term implements Comparable<Term>, Accountable {
       RamUsageEstimator.shallowSizeOfInstance(Term.class)
           + RamUsageEstimator.shallowSizeOfInstance(BytesRef.class);
 
-  String field;
-  BytesRef bytes;
+  String field;// 字段名是字符
+  BytesRef bytes;// 查询值是字节流
 
   /**
    * Constructs a Term with the given field and bytes.

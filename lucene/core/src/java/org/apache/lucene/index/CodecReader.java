@@ -25,6 +25,7 @@ import org.apache.lucene.codecs.NormsProducer;
 import org.apache.lucene.codecs.PointsReader;
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.codecs.TermVectorsReader;
+import org.apache.lucene.codecs.lucene90.blocktree.Lucene90BlockTreeTermsReader;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.util.Bits;
 
@@ -105,8 +106,12 @@ public abstract class CodecReader extends LeafReader {
 
   @Override
   public final Terms terms(String field) throws IOException {
+    // 确保打开读取
     ensureOpen();
+    // 读取字段的信息
     FieldInfo fi = getFieldInfos().fieldInfo(field);
+    // 1. index 元数据未记录当前字段
+    // 2. 当前字段未建底层索引
     if (fi == null || fi.getIndexOptions() == IndexOptions.NONE) {
       // Field does not exist or does not index postings
       return null;
@@ -114,7 +119,10 @@ public abstract class CodecReader extends LeafReader {
     /**
      * 获取PostingsReader: 倒排表
      * 然后拿到对应字段的FieldReader（已有倒排索引的）
+     *
+     * @see Lucene90BlockTreeTermsReader#terms(String)
      */
+    // 获取当前字段的倒排表
     return getPostingsReader().terms(field);
   }
 

@@ -308,6 +308,7 @@ public final class Lucene90BlockTreeTermsReader extends FieldsProducer {
   @Override
   public Terms terms(String field) throws IOException {
     assert field != null;
+    // 可能预先读取，也可能是函数
     return fieldMap.get(field);
   }
 

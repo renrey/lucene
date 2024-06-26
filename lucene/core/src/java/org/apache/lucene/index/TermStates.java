@@ -105,12 +105,16 @@ public final class TermStates {
       for (final LeafReaderContext ctx : context.leaves()) {
         // if (DEBUG) System.out.println("  r=" + leaves[i].reader);
         /**
-         *  加载term!!!
+         *  加载terms!!! 加载字段的词典并且做 检索，无目标词则返回空
          */
         TermsEnum termsEnum = loadTermsEnum(ctx, term);
+        // 当前segment 有这个字段的词典，并且有符合检索的词
         if (termsEnum != null) {
+          // 大概就是从词典对象拷贝符合的词信息（因为是迭代器，所以最后的就是目标） -》而这里就是1个词，所以迭代器只用1次
           final TermState termState = termsEnum.termState();
           // if (DEBUG) System.out.println("    found");
+          // 把当前segment的 符合词（1个）信息注册到perReaderTermState
+          // 参数：termState-- 当前segment下对应词信息、ord--当前segment的顺序 、 docFreq-- 当前字段索引的doc数、totalTermFreq--当前字段索引tf总数
           perReaderTermState.register(
               termState, ctx.ord, termsEnum.docFreq(), termsEnum.totalTermFreq());
         }
@@ -120,25 +124,27 @@ public final class TermStates {
   }
 
   private static TermsEnum loadTermsEnum(LeafReaderContext ctx, Term term) throws IOException {
-    // 拿到当前field的FeildReader:FieldReader
+    // 拿到当前field的FeildReader -》从当前segment获取当前字段的词典
     // Terms 代表多个包含多个term的集合，这里就是代表（当前segment-ctx）1个field下的term
     final Terms terms = ctx.reader().terms(term.field());
+    // 有存在这个字段的词典
     if (terms != null) {
       // 生成迭代器SegmentTermsEnum
       /**
        * @see FieldReader#iterator()
        */
-      final TermsEnum termsEnum = terms.iterator();
+      final TermsEnum termsEnum = terms.iterator();// 词典迭代器
       /**
        * 通过TermsEnum迭代器找到目标term
        * @see SegmentTermsEnum#seekExact(BytesRef)
        */
-      // 查找当前term的位置
-      if (termsEnum.seekExact(term.bytes())) {
-        // 找到就返回，
+      // 查找当前term的位置 -》通过这个字段的词典迭代器检索
+      if (termsEnum.seekExact(term.bytes())) {// term.bytes()-》查询词的字节流
+        // 当前segment的这个字段词典有这个词，返回词典？
         return termsEnum;
       }
     }
+    // 无这个字段的词典、当前segment的字段词典无符合的term 都返回null
     return null;
   }
 
@@ -155,7 +161,9 @@ public final class TermStates {
    */
   public void register(
       TermState state, final int ord, final int docFreq, final long totalTermFreq) {
+    // 把词信息对象保存到数组
     register(state, ord);
+    // 直接累加 df、tf
     accumulateStatistics(docFreq, totalTermFreq);
   }
 
@@ -168,6 +176,7 @@ public final class TermStates {
     assert state != null : "state must not be null";
     assert ord >= 0 && ord < states.length;
     assert states[ord] == null : "state for ord: " + ord + " already registered";
+    // 数组还是以segment编号，如seg无结果照占着
     states[ord] = state;
   }
 

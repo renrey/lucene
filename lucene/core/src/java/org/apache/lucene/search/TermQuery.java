@@ -35,8 +35,8 @@ public class TermQuery extends Query {
 
   final class TermWeight extends Weight {
     private final Similarity similarity;
-    private final Similarity.SimScorer simScorer;
-    private final TermStates termStates;
+    private final Similarity.SimScorer simScorer; // 计分器
+    private final TermStates termStates;// 目标词的统计信息
     private final ScoreMode scoreMode;
 
     public TermWeight(
@@ -47,26 +47,39 @@ public class TermQuery extends Query {
         throw new IllegalStateException("termStates are required when scores are needed");
       }
       this.scoreMode = scoreMode;
-      this.termStates = termStates;
+      this.termStates = termStates;// 查询值在字段索引的信息
       this.similarity = searcher.getSimilarity();
 
+      // Stats -》单纯数据统计信息，非内容
       final CollectionStatistics collectionStats;
       final TermStatistics termStats;
+      // 其实等于前面已经做完检索相关？
       if (scoreMode.needsScores()) {
-        collectionStats = searcher.collectionStatistics(term.field());
+        // 这个通过searcher拿到目标index中这个字段索引总体信息（）
+        collectionStats = searcher.collectionStatistics(term.field());// 查询字段名
+        // 当前值的在对应字段索引的信息
+        // 这里还判断是否有符合的doc，无就null
         termStats =
             termStates.docFreq() > 0
-                ? searcher.termStatistics(term, termStates.docFreq(), termStates.totalTermFreq())
+                ? searcher.termStatistics(term, termStates.docFreq(), termStates.totalTermFreq())// 包装值字节流、值的df（出现在多少个doc）、值的总tf （所有doc下出现次数）
                 : null;
       } else {
         // we do not need the actual stats, use fake stats with docFreq=maxDoc=ttf=1
+        // 查询字段名
         collectionStats = new CollectionStatistics(term.field(), 1, 1, 1, 1);
-        termStats = new TermStatistics(term.bytes(), 1, 1);
+        termStats = new TermStatistics(term.bytes(), 1, 1);// 查询值
       }
 
       if (termStats == null) {
+        // 代表无符合doc，直接null
+
         this.simScorer = null; // term doesn't exist in any segment, we won't use similarity at all
       } else {
+        // 有符合doc
+
+        // 相似度计分器
+        // collectionStats只入-》只是当前字段的统计信息
+        // 把Stats提供给计分器做算分使用
         this.simScorer = similarity.scorer(boost, collectionStats, termStats);
       }
     }
@@ -102,16 +115,23 @@ public class TermQuery extends Query {
       /**
        * 生成当前segment下当前field的词迭代器（加载fst索引），并在里面检索到目标term的倒排索引内容
        */
+
+      // 获取倒排索引，并进行检索
       final TermsEnum termsEnum = getTermsEnum(context);
+
+      // 无倒排索引
       // 就是说当前segment（LeafReaderContext） 没有做这个field的倒排索引（无tip、tim）
       if (termsEnum == null) {
         return null;
       }
+
+
+      // 包装基本当前term query的scorer
       LeafSimScorer scorer =
           new LeafSimScorer(simScorer, context.reader(), term.field(), scoreMode.needsScores());
       // 一般是这个，除非全量
       if (scoreMode == ScoreMode.TOP_SCORES) {
-        //
+        // 再对外包装个scorer （TermScorer -> LeafSimScorer -> 相似度底层simSimScorer）
         return new TermScorer(this, termsEnum.impacts(PostingsEnum.FREQS), scorer);
       } else {
         return new TermScorer(
@@ -132,6 +152,8 @@ public class TermQuery extends Query {
      * exist in the given context
      */
     private TermsEnum getTermsEnum(LeafReaderContext context) throws IOException {
+      // 这个方法等于获取词典
+
       assert termStates != null;
       assert termStates.wasBuiltFor(ReaderUtil.getTopLevelContext(context))
           : "The top-reader used to create Weight is not the same as the current reader's top-reader ("
@@ -157,7 +179,7 @@ public class TermQuery extends Query {
       // SegmentTermsEnum
       final TermsEnum termsEnum = context.reader().terms(term.field()).iterator();
 
-
+      // 检索目标值
       /**
        * 实际就是把 term（blob）跟state放入到TermsEnum中，实际没做检索操作
        * @see org.apache.lucene.codecs.blockterms.BlockTermsReader.FieldReader.SegmentTermsEnum#seekExact(BytesRef, TermState)
@@ -219,6 +241,7 @@ public class TermQuery extends Query {
 
   /** Constructs a query for the term <code>t</code>. */
   public TermQuery(Term t) {
+    // term 里包含字段名、查询值
     term = Objects.requireNonNull(t);
     perReaderTermState = null;
   }
@@ -245,14 +268,15 @@ public class TermQuery extends Query {
     final IndexReaderContext context = searcher.getTopReaderContext();
     final TermStates termState;
     if (perReaderTermState == null || perReaderTermState.wasBuiltFor(context) == false) {
-      // 构建TermStates！！！
+      // 构建TermStates！！！ -> 这里可能做对应term的检索
       termState = TermStates.build(context, term, scoreMode.needsScores());
     } else {
       // PRTS was pre-build for this IS
       termState = this.perReaderTermState;
     }
 
-    // 包装成1Weight，主要是termState，其他都是原来入参
+    // 这里主要是封装字段索引、查询值在索引、计分器等东西，看着进入前已做完检索！！！
+    // 包装成1Weight，主要是termState(就是查询词在字段索引的检索信息)，其他都是原来入参
     return new TermWeight(searcher, scoreMode, boost, termState);
   }
 

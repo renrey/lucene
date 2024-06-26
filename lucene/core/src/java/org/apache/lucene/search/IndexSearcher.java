@@ -101,7 +101,7 @@ public class IndexSearcher {
   // NOTE: these members might change in incompatible ways
   // in the next release
   protected final IndexReaderContext readerContext;
-  protected final List<LeafReaderContext> leafContexts;
+  protected final List<LeafReaderContext> leafContexts;// segment
 
   /** used with executor - each slice holds a set of leafs executed within one thread */
   private final LeafSlice[] leafSlices;
@@ -499,6 +499,7 @@ public class IndexSearcher {
 
     final int cappedNumHits = Math.min(numHits, limit);
 
+    // 这个其实就是对doc结果收集
     final CollectorManager<TopScoreDocCollector, TopDocs> manager =
         new CollectorManager<TopScoreDocCollector, TopDocs>() {
           // scoreMode 应该都是Top
@@ -546,7 +547,7 @@ public class IndexSearcher {
 
   /**
    * Finds the top <code>n</code> hits for <code>query</code>.
-   *
+   * 简单查询api！！
    * @throws TooManyClauses If a query would exceed {@link IndexSearcher#getMaxClauseCount()}
    *     clauses.
    */
@@ -696,21 +697,33 @@ public class IndexSearcher {
     // 先建1个collectior（通过入参的collectorManager）
     final C firstCollector = collectorManager.newCollector();
     query = rewrite(query);// 重写query
+
+    // 每个seg上词典检索
     // 创建执行查询时使用的Weight，query=外部使用的查询参数,weight是更底层的使用查询的参数
+    // 注意：这里已经对每个segment做了对应feild索引的词典上，检索目标值
     final Weight weight = createWeight(query, firstCollector.scoreMode(), 1);
+    // 此时，已加载在每个segment的 查询词的词项对象
+    // Weight主要包装了 目标词在当前字段索引上的总体统计信息、当前目标词基础计分器（包含目标词统计信息）
+
     // 进入下一步内部查询
     return search(weight, collectorManager, firstCollector);
   }
 
   private <C extends Collector, T> T search(
       Weight weight, CollectorManager<C, T> collectorManager, C firstCollector) throws IOException {
-    // 单个leaf执行
+    // 单个leaf执行(单个segment)
     if (executor == null || leafSlices.length <= 1) {
-      // 单个执行
+      // 未使用多线程 or 只有单个segment
+
+
+      // 检索入口
+      // leafContexts--segment集合
       search(leafContexts, weight, firstCollector);
       // firstCollector的结果交给manager处理reduce
       return collectorManager.reduce(Collections.singletonList(firstCollector));
     } else {
+      // 使用多线程且有多个segment
+
       final List<C> collectors = new ArrayList<>(leafSlices.length);
       collectors.add(firstCollector);
       final ScoreMode scoreMode = firstCollector.scoreMode();
@@ -773,9 +786,11 @@ public class IndexSearcher {
     // always use single thread:
     // 等于遍历每个segment的Readr
     for (LeafReaderContext ctx : leaves) { // search each subreader
+      // 当前seg start
+
       final LeafCollector leafCollector;
       try {
-        // 基于这个segment生成 1个collector
+        // 1。这个segment生成 1个collector -> 只是封装，因为上一步已做词检索，可通过词项信息找到倒排索引
         /**
          * @see TopScoreDocCollector.SimpleTopScoreDocCollector#getLeafCollector(LeafReaderContext)
          */
@@ -789,15 +804,27 @@ public class IndexSearcher {
       }
       /**
        * 通过Query的Weight对象拿到BulkScorer
-       * BulkScorer 是对一个基础scorer的包装类，作用是可以返回多个doc
+       * BulkScorer 多个doc的计分？
        */
       BulkScorer scorer = weight.bulkScorer(ctx);
 
-      // 代表有doc
+      // 代表当前segment下有符合这个条件的doc
       if (scorer != null) {
         try {
+          // 对这个seg下符合的doc执行算分
           /**
-           * scorer计算得分，加入到leafCollector, 这里才会触发遍历命中doc
+           * scorer算分
+           * 实际通过包装类调用外部collector来实现结果聚合，并且在其中进行3点重要：
+           * 1。遍历对应segment的词项对应的倒排索引
+           * 2。通过位图判断当前doc是否被删除
+           * 3。doc算分
+           *
+           * @see BulkScorer#score(LeafCollector, Bits)
+           * @see Weight.DefaultBulkScorer#score(LeafCollector, Bits, int, int)
+           *
+           * TermScorer -> LeafSimScorer -> 相似度底层simSimScorer
+           *
+           * ctx.reader().getLiveDocs()用来判断doc是否被删除的位图逻辑！！！
            */
           scorer.score(leafCollector, ctx.reader().getLiveDocs());
         } catch (
@@ -807,6 +834,8 @@ public class IndexSearcher {
           // continue with the following leaf
         }
       }
+
+      // 当前seg end
     }
   }
 
@@ -914,8 +943,15 @@ public class IndexSearcher {
    */
   public Weight createWeight(Query query, ScoreMode scoreMode, float boost) throws IOException {
     final QueryCache queryCache = this.queryCache;
-    // 创建包装个对应Query的Weight对象!!! 会通过simliarity生成scorer
+    // 1。 创建包装个对应Query的Weight对象 -》初始对应查询的对象
+    // 会通过simliarity生成scorer
+    /**
+     * term query的：
+     * @see TermQuery#createWeight(IndexSearcher, ScoreMode, float)
+     */
     Weight weight = query.createWeight(this, scoreMode, boost);
+    // 注意这里已经完成，在每个segment 上 对应field的词典检索！！-》已有在每个segment的 符合词信息（termstat），每个seg上最多1个
+
     if (scoreMode.needsScores() == false && queryCache != null) {
       weight = queryCache.doCache(weight, queryCachingPolicy);
     }
@@ -995,18 +1031,27 @@ public class IndexSearcher {
     long docCount = 0;
     long sumTotalTermFreq = 0;
     long sumDocFreq = 0;
+    // 这个遍历应该是多个文件 -》应该是segment文件
     for (LeafReaderContext leaf : reader.leaves()) {
+      // 从这个segment 字节流拿到 当前 field的 词典？-》terms代表多个词
+      /**
+       * org.apache.lucene.index.SegmentReader
+       * @see CodecReader#terms(String)
+       */
       final Terms terms = leaf.reader().terms(field);
       if (terms == null) {
         continue;
       }
-      docCount += terms.getDocCount();
-      sumTotalTermFreq += terms.getSumTotalTermFreq();
-      sumDocFreq += terms.getSumDocFreq();
+      // 通过terms里数量统计累加 ，最后得到总index的统计
+      docCount += terms.getDocCount();//doc数量
+      sumTotalTermFreq += terms.getSumTotalTermFreq(); // tf
+      sumDocFreq += terms.getSumDocFreq();// df
     }
     if (docCount == 0) {
       return null;
     }
+    // 对外包装对象 -》好像不会返回内容，都是一些统计数据
+    // 包含对应字段名、最大doc id、doc总数、tf、df
     return new CollectionStatistics(field, reader.maxDoc(), docCount, sumTotalTermFreq, sumDocFreq);
   }
 

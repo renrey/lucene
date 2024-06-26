@@ -111,6 +111,7 @@ public class BM25Similarity extends Similarity {
   /** The default implementation computes the average as <code>sumTotalTermFreq / docCount</code> */
   protected float avgFieldLength(CollectionStatistics collectionStats) {
     // 词数量/文档数
+    // 平均字段长度 -》词总数/ 文档数 -》每个doc有n个词
     return (float) (collectionStats.sumTotalTermFreq() / (double) collectionStats.docCount());
   }
 
@@ -198,6 +199,9 @@ public class BM25Similarity extends Similarity {
     return Explanation.match((float) idf, "idf, sum of:", details);
   }
 
+  // collectionStats 查询字段名相关
+  // termStats 查询值相关，里面是字节流
+  // Stats统计信息
   @Override
   public final SimScorer scorer(
       float boost, CollectionStatistics collectionStats, TermStatistics... termStats) {
@@ -206,9 +210,11 @@ public class BM25Similarity extends Similarity {
         termStats.length == 1
             ? idfExplain(collectionStats, termStats[0])
             : idfExplain(collectionStats, termStats);
+    // 平均doc长度 = 平均文档的term数量
     float avgdl = avgFieldLength(collectionStats);
 
     float[] cache = new float[256];
+    //
     for (int i = 0; i < cache.length; i++) {
       // 正常1：1/ k1 * (1-b+ (b/avgdl))
       cache[i] = 1f / (k1 * ((1 - b) + b * LENGTH_TABLE[i] / avgdl));
@@ -286,6 +292,10 @@ public class BM25Similarity extends Similarity {
       }
       subs.add(Explanation.match(avgdl, "avgdl, average length of field"));
       float normInverse = 1f / (k1 * ((1 - b) + b * doclen / avgdl));
+
+      // k1 * (1 - b + b * dl / avgdl)- > k1*(1 + dl超出平均的比例 * b )
+      // 如果dl超出平均的比例是正数（超过平均），且dl越长超过越多 ，最终分数越低，而负数（dl短过平均），越短，分数越高，-》》》最终dl越大，分数越小，越短越大
+      // b越大，分数越小
       return Explanation.match(
           1f - 1f / (1 + freq.getValue().floatValue() * normInverse),
           "tf, computed as freq / (freq + k1 * (1 - b + b * dl / avgdl)) from:",

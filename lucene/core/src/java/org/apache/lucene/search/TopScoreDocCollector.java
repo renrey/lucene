@@ -68,10 +68,12 @@ public abstract class TopScoreDocCollector extends TopDocsCollector<ScoreDoc> {
           }
         }
 
+        // 就是收集（聚合）有效doc（未删除）
         // 这个方法可知其实检索结果docId已全都放到pq
         // 只是按顺序把每个doc的分数取出，并通过赋值doc的score后，在pq这个优先队列里排序
         @Override
         public void collect(int doc) throws IOException {
+          // 1. 先算doc的分数
           float score = scorer.score();// 从scorer获取当前doc的score
 
           // This collector relies on the fact that scorers produce positive values:
@@ -84,6 +86,7 @@ public abstract class TopScoreDocCollector extends TopDocsCollector<ScoreDoc> {
             updateGlobalMinCompetitiveScore(scorer);
           }
 
+          // 小于等于当前已聚合的结果的top分 ，处理下就返回
           if (score <= pqTop.score) {
             if (totalHitsRelation == TotalHits.Relation.EQUAL_TO) {
               // we just reached totalHitsThreshold, we can start setting the min
@@ -95,6 +98,8 @@ public abstract class TopScoreDocCollector extends TopDocsCollector<ScoreDoc> {
             // documents with lower doc Ids. Therefore reject those docs too.
             return;
           }
+
+          // 大于目前聚合结果的top分，更新top-》加入到堆顶
           pqTop.doc = doc + docBase;// 真是docId（doc是偏移量）
           pqTop.score = score;// 分数
           // 更新优先队列的堆顶 没分数会排前面

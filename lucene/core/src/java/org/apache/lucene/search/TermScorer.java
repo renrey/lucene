@@ -36,6 +36,7 @@ public final class TermScorer extends Scorer {
   /** Construct a {@link TermScorer} that will iterate all documents. */
   public TermScorer(Weight weight, PostingsEnum postingsEnum, LeafSimScorer docScorer) {
     super(weight);
+    // 倒排索引对象？
     iterator = this.postingsEnum = postingsEnum;
     impactsEnum = new SlowImpactsEnum(postingsEnum);
     impactsDisi = new ImpactsDISI(impactsEnum, impactsEnum, docScorer.getSimScorer());
@@ -66,6 +67,9 @@ public final class TermScorer extends Scorer {
 
   @Override
   public DocIdSetIterator iterator() {
+    /**
+     * @see
+     */
     return iterator;
   }
 

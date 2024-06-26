@@ -18,6 +18,8 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.Arrays;
+
+import org.apache.lucene.codecs.lucene90.Lucene90PostingsReader;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
@@ -166,6 +168,9 @@ public abstract class Weight implements SegmentCacheable {
      * 从Query获取scorer
      * 例如
      * @see TermQuery.TermWeight#scorer(LeafReaderContext)
+     *
+     * 底层：TermScorer -> LeafSimScorer -> 相似度底层simSimScorer
+     * LeafReaderContext-> 即segment
      */
     Scorer scorer = scorer(context);
     // 没sorer等于没匹配doc？可能scorer方法就进行了检索
@@ -207,8 +212,8 @@ public abstract class Weight implements SegmentCacheable {
    * @lucene.internal
    */
   protected static class DefaultBulkScorer extends BulkScorer {
-    private final Scorer scorer;
-    private final DocIdSetIterator iterator;
+    private final Scorer scorer; // 包装的scorer
+    private final DocIdSetIterator iterator; // 包装的scorer迭代器, 其实就是docId集合
     private final TwoPhaseIterator twoPhase;
 
     /** Sole constructor. */
@@ -217,6 +222,11 @@ public abstract class Weight implements SegmentCacheable {
         throw new NullPointerException();
       }
       this.scorer = scorer;
+      /**
+       * 常见的term，
+       * iterator: PostingsEnum (DocIdSetIterator)
+       *  twoPhase:无
+       */
       this.iterator = scorer.iterator();
       this.twoPhase = scorer.twoPhaseIterator();
     }
@@ -229,15 +239,18 @@ public abstract class Weight implements SegmentCacheable {
     @Override
     public int score(LeafCollector collector, Bits acceptDocs, int min, int max)
         throws IOException {
-      // 调用setScorer
+      // 1。 把底层包装的scorer更新到collector -> 下面会通过collector来调用
       collector.setScorer(scorer);
 
+      // termscorer的twoPhase=null，所以使用iterator->PostingsEnum
       DocIdSetIterator scorerIterator = twoPhase == null ? iterator : twoPhase.approximation();
       DocIdSetIterator competitiveIterator = collector.competitiveIterator();
+      // 用于获取目标docid的迭代器！！！
       DocIdSetIterator filteredIterator;
       if (competitiveIterator == null) {
         /**
          * 使用被包装的scorer的iterator()
+         * PostingsEnum
          */
         filteredIterator = scorerIterator;
       } else {
@@ -256,7 +269,10 @@ public abstract class Weight implements SegmentCacheable {
       }
       // 无filter缓存
       if (filteredIterator.docID() == -1 && min == 0 && max == DocIdSetIterator.NO_MORE_DOCS) {
-        // 对所有遍历、算分
+        // 对所有doc遍历、算分 !!! -> 里面调用scorer
+        // 里面有2个逻辑：
+        //  1. 通过acceptDocs的位图判断doc是否被删除
+        //  2. 未删除使用collector进行聚合结果，里面会进行doc的算分
         scoreAll(collector, filteredIterator, twoPhase, acceptDocs);
         return DocIdSetIterator.NO_MORE_DOCS;
       } else {
@@ -311,18 +327,26 @@ public abstract class Weight implements SegmentCacheable {
         Bits acceptDocs)
         throws IOException {
       if (twoPhase == null) {
+
         // 执行迭代器，遍历doc
-        for (int doc = iterator.nextDoc();
-            doc != DocIdSetIterator.NO_MORE_DOCS;
+        /**
+         * @see Lucene90PostingsReader.BlockDocsEnum#nextDoc()
+         */
+        for (int doc = iterator.nextDoc();// 即docId
+            doc != DocIdSetIterator.NO_MORE_DOCS;// 代表遍历完了
             doc = iterator.nextDoc()) {
-          // 执行
+
+          // 通过acceptDocs (Bits 位图) 看 doc是否被删了
           if (acceptDocs == null || acceptDocs.get(doc)) {
+            // doc未被删除，对doc执行计分，并在collector中收集起来（聚合）
+            //  这个聚合里会进行算分
             /**
              * @see TopScoreDocCollector.SimpleTopScoreDocCollector#getLeafCollector(LeafReaderContext)
              */
             collector.collect(doc);
           }
         }
+
       } else {
         // The scorer has an approximation, so run the approximation first, then check acceptDocs,
         // then confirm
