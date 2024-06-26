@@ -1520,9 +1520,10 @@ public final class FST<T> implements Accountable {
         // System.out.println("    cycle");
         int mid = (low + high) >>> 1;// 高低相加/2得到mid
         // +1 to skip over flags
+        // 需要减证明存到index文件的时候是倒序插入的
         in.setPosition(arc.posArcsStart() - (arc.bytesPerArc() * mid + 1));
 
-        // 读取中间label内容byte
+        // 从index文件读取中间label内容byte
         int midLabel = readLabel(in);
         // 比较中间label与当前label
         final int cmp = midLabel - labelToMatch;

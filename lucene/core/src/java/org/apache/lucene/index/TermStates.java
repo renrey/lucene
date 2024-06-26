@@ -120,7 +120,7 @@ public final class TermStates {
   }
 
   private static TermsEnum loadTermsEnum(LeafReaderContext ctx, Term term) throws IOException {
-    // 拿到当前field的FeildReader
+    // 拿到当前field的FeildReader:FieldReader
     // Terms 代表多个包含多个term的集合，这里就是代表（当前segment-ctx）1个field下的term
     final Terms terms = ctx.reader().terms(term.field());
     if (terms != null) {
@@ -130,10 +130,12 @@ public final class TermStates {
        */
       final TermsEnum termsEnum = terms.iterator();
       /**
+       * 通过TermsEnum迭代器找到目标term
        * @see SegmentTermsEnum#seekExact(BytesRef)
        */
       // 查找当前term的位置
       if (termsEnum.seekExact(term.bytes())) {
+        // 找到就返回，
         return termsEnum;
       }
     }

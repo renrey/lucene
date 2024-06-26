@@ -99,6 +99,9 @@ public class TermQuery extends Query {
           : "The top-reader used to create Weight is not the same as the current reader's top-reader ("
               + ReaderUtil.getTopLevelContext(context);
       ;
+      /**
+       * 生成当前segment下当前field的词迭代器（加载fst索引），并在里面检索到目标term的倒排索引内容
+       */
       final TermsEnum termsEnum = getTermsEnum(context);
       // 就是说当前segment（LeafReaderContext） 没有做这个field的倒排索引（无tip、tim）
       if (termsEnum == null) {
@@ -133,24 +136,30 @@ public class TermQuery extends Query {
       assert termStates.wasBuiltFor(ReaderUtil.getTopLevelContext(context))
           : "The top-reader used to create Weight is not the same as the current reader's top-reader ("
               + ReaderUtil.getTopLevelContext(context);
+
+      // 找到当前segment对应的TermState
       final TermState state = termStates.get(context);
       if (state == null) { // term is not present in that reader
         assert termNotInReader(context.reader(), term)
             : "no termstate found but term exists in reader term=" + term;
         return null;
       }
+
+
       /**
        * SegmentReader实际使用 , 获取当前segment下这个field的倒排索引reader
        * @see CodecReader#terms(String)
        *
        * @see FieldReader#iterator()
        */
-      // 获取当前segment下这个field的倒排索引reader
+      // 加载获取当前segment下这个field的倒排索引reader
       // 这个迭代器可以遍历这个segment下这个feild倒排索引的所有term词
+      // SegmentTermsEnum
       final TermsEnum termsEnum = context.reader().terms(term.field()).iterator();
-      // 检索目标值
+
+
       /**
-       * 对迭起器中term执行检索
+       * 实际就是把 term（blob）跟state放入到TermsEnum中，实际没做检索操作
        * @see org.apache.lucene.codecs.blockterms.BlockTermsReader.FieldReader.SegmentTermsEnum#seekExact(BytesRef, TermState)
        */
       termsEnum.seekExact(term.bytes(), state);

@@ -631,7 +631,7 @@ final class SegmentTermsEnum extends BaseTermsEnum {
     currentFrame.scanToFloorFrame(target);
 
     // Target term is entirely contained in the index:
-    if (!currentFrame.hasTerms) {
+    if (!currentFrame.hasTerms) {// frame无terms
       termExists = false;
       term.setLength(targetUpto);
       // if (DEBUG) {
@@ -640,6 +640,7 @@ final class SegmentTermsEnum extends BaseTermsEnum {
       return false;
     }
 
+    // 当前frame又load block
     currentFrame.loadBlock();
 
     // 在这个frame扫描目标term
